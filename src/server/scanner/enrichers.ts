@@ -5,6 +5,7 @@ interface GitInfo {
   hasGit: boolean;
   gitBranch: string | null;
   gitDirty: boolean;
+  gitDirtyCount: number;
   githubRepo: string | null;
   githubUrl: string | null;
 }
@@ -25,6 +26,7 @@ export async function getGitInfo(dir: string): Promise<GitInfo> {
     hasGit: false,
     gitBranch: null,
     gitDirty: false,
+    gitDirtyCount: 0,
     githubRepo: null,
     githubUrl: null,
   };
@@ -38,7 +40,9 @@ export async function getGitInfo(dir: string): Promise<GitInfo> {
 
   // Check for dirty state
   const status = await runCmd(['git', 'status', '--porcelain'], dir);
-  result.gitDirty = status.length > 0;
+  const statusLines = status ? status.split('\n').filter(Boolean) : [];
+  result.gitDirty = statusLines.length > 0;
+  result.gitDirtyCount = statusLines.length;
 
   // Get GitHub remote
   const remote = await runCmd(['git', 'remote', 'get-url', 'origin'], dir);

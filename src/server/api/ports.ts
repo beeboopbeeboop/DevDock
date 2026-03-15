@@ -52,12 +52,14 @@ portsApi.get('/all', async (c) => {
     // Cross-reference with projects
     const db = (await import('../db/schema.js')).getDb();
     const projects = db.prepare(
-      'SELECT id, name, dev_port FROM projects WHERE dev_port IS NOT NULL'
-    ).all() as { id: string; name: string; dev_port: number }[];
+      'SELECT id, name, path, dev_port FROM projects'
+    ).all() as { id: string; name: string; path: string; dev_port: number | null }[];
 
-    const portToProject = new Map(
-      projects.map((p) => [p.dev_port, { id: p.id, name: p.name }])
-    );
+    // 1. Match by dev_port (explicit port assignment)
+    const portToProject = new Map<number, { id: string; name: string }>();
+    for (const p of projects) {
+      if (p.dev_port) portToProject.set(p.dev_port, { id: p.id, name: p.name });
+    }
 
     for (const p of ports) {
       const proj = portToProject.get(p.port);
@@ -65,6 +67,35 @@ portsApi.get('/all', async (c) => {
         p.projectId = proj.id;
         p.projectName = proj.name;
       }
+    }
+
+    // 2. For unmatched ports, check process working directory against project paths
+    const unmatchedPorts = ports.filter((p) => !p.projectId && p.pid > 0);
+    if (unmatchedPorts.length > 0 && projects.length > 0) {
+      const pids = [...new Set(unmatchedPorts.map((p) => p.pid))];
+      // Get working directories for all unmatched PIDs in one lsof call
+      try {
+        const cwdResult = await Bun.$`/usr/sbin/lsof -a -d cwd -p ${pids.join(',')} -Fn 2>/dev/null`.nothrow().text();
+        const pidToCwd = new Map<number, string>();
+        let currentPid = 0;
+        for (const line of cwdResult.split('\n')) {
+          if (line.startsWith('p')) currentPid = parseInt(line.slice(1));
+          else if (line.startsWith('n') && currentPid) pidToCwd.set(currentPid, line.slice(1));
+        }
+
+        // Sort projects by path length (longest first) so deeper paths match before parents
+        const sortedProjects = [...projects].sort((a, b) => b.path.length - a.path.length);
+
+        for (const p of unmatchedPorts) {
+          const cwd = pidToCwd.get(p.pid);
+          if (!cwd) continue;
+          const match = sortedProjects.find((proj) => cwd.startsWith(proj.path));
+          if (match) {
+            p.projectId = match.id;
+            p.projectName = match.name;
+          }
+        }
+      } catch { /* cwd lookup is best-effort */ }
     }
 
     return c.json(ports);

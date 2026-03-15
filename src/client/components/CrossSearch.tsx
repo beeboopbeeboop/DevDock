@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useCrossSearch } from '../hooks/useSearch';
 import { PROJECT_TYPE_COLORS } from '../types/project';
-import { IconSearch, IconVSCode, IconCursor, IconFolder, IconTerminal, IconCopy, IconFile } from './Icons';
+import { IconSearch, IconVSCode, IconCursor, IconFolder, IconTerminal, IconCopy, IconFile, IconStar, IconX } from './Icons';
 import { useProjectActions } from '../hooks/useProjects';
 import { ContextMenu } from './ContextMenu';
 import { useToast } from './Toast';
+import { loadSetting, saveSetting } from './SettingsPanel';
 
 const FILTER_OPTIONS = [
   { label: 'All', glob: undefined },
@@ -19,6 +20,11 @@ interface CrossSearchProps {
   onSelectProjectById: (id: string) => void;
 }
 
+interface SavedSearch {
+  query: string;
+  glob?: string;
+}
+
 export function CrossSearch({ onSelectProjectById }: CrossSearchProps) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -27,16 +33,52 @@ export function CrossSearch({ onSelectProjectById }: CrossSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const actions = useProjectActions();
   const { toast } = useToast();
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => loadSetting('recent-searches', []));
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => loadSetting('saved-searches', []));
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Save to recent on search execution
+  useEffect(() => {
+    if (debouncedQuery && debouncedQuery.length >= 2) {
+      setRecentSearches((prev) => {
+        const next = [debouncedQuery, ...prev.filter((s) => s !== debouncedQuery)].slice(0, 10);
+        saveSetting('recent-searches', next);
+        return next;
+      });
+    }
+  }, [debouncedQuery]);
 
   const handleChange = useCallback((val: string) => {
     setQuery(val);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setDebouncedQuery(val.trim()), 300);
   }, []);
+
+  const applySavedSearch = (s: SavedSearch) => {
+    setQuery(s.query);
+    setDebouncedQuery(s.query);
+    if (s.glob !== undefined) setActiveGlob(s.glob);
+  };
+
+  const toggleBookmark = () => {
+    if (!debouncedQuery) return;
+    const exists = savedSearches.some((s) => s.query === debouncedQuery && s.glob === activeGlob);
+    let next: SavedSearch[];
+    if (exists) {
+      next = savedSearches.filter((s) => !(s.query === debouncedQuery && s.glob === activeGlob));
+      toast('Search removed from bookmarks', 'info');
+    } else {
+      next = [...savedSearches, { query: debouncedQuery, glob: activeGlob }];
+      toast('Search bookmarked', 'success');
+    }
+    setSavedSearches(next);
+    saveSetting('saved-searches', next);
+  };
+
+  const isBookmarked = savedSearches.some((s) => s.query === debouncedQuery && s.glob === activeGlob);
 
   const { data, isLoading, isFetching } = useCrossSearch(debouncedQuery, activeGlob);
 
@@ -135,6 +177,16 @@ export function CrossSearch({ onSelectProjectById }: CrossSearchProps) {
           onChange={(e) => handleChange(e.target.value)}
         />
         {isFetching && <span className="scanning-indicator" style={{ fontSize: 11 }}>Searching...</span>}
+        {debouncedQuery && (
+          <button
+            className="p-icon-btn"
+            onClick={toggleBookmark}
+            title={isBookmarked ? 'Remove bookmark' : 'Bookmark this search'}
+            style={{ flexShrink: 0 }}
+          >
+            <IconStar size={13} filled={isBookmarked} color={isBookmarked ? 'var(--p-warning)' : 'currentColor'} />
+          </button>
+        )}
       </div>
 
       <div className="search-filter-bar">
@@ -151,12 +203,48 @@ export function CrossSearch({ onSelectProjectById }: CrossSearchProps) {
 
       <div className="content-area">
         {!debouncedQuery ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <IconSearch size={32} color="var(--p-text-muted)" />
-            </div>
-            <div className="empty-state-title">Search across all projects</div>
-            <div className="empty-state-desc">Type a query to search file contents across every project. Use the file type filters to narrow results.</div>
+          <div>
+            {savedSearches.length > 0 && (
+              <div style={{ padding: '12px 16px' }}>
+                <div className="detail-section-title" style={{ marginBottom: 8 }}>Saved Searches</div>
+                {savedSearches.map((s, i) => (
+                  <div key={i} className="search-history-item">
+                    <button className="search-history-btn" onClick={() => applySavedSearch(s)}>
+                      <IconStar size={11} filled color="var(--p-warning)" />
+                      <span>{s.query}</span>
+                      {s.glob && <span className="topbar-meta">{s.glob}</span>}
+                    </button>
+                    <button className="p-icon-btn" style={{ opacity: 0.4, flexShrink: 0 }} onClick={() => {
+                      const next = savedSearches.filter((_, j) => j !== i);
+                      setSavedSearches(next);
+                      saveSetting('saved-searches', next);
+                    }}>
+                      <IconX size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {recentSearches.length > 0 && (
+              <div style={{ padding: '12px 16px' }}>
+                <div className="detail-section-title" style={{ marginBottom: 8 }}>Recent Searches</div>
+                {recentSearches.map((s, i) => (
+                  <button key={i} className="search-history-btn" onClick={() => { setQuery(s); setDebouncedQuery(s); }}>
+                    <IconSearch size={11} color="var(--p-text-muted)" />
+                    <span>{s}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {savedSearches.length === 0 && recentSearches.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-state-icon">
+                  <IconSearch size={32} color="var(--p-text-muted)" />
+                </div>
+                <div className="empty-state-title">Search across all projects</div>
+                <div className="empty-state-desc">Type a query to search file contents across every project. Use the file type filters to narrow results.</div>
+              </div>
+            )}
           </div>
         ) : isLoading ? (
           <div className="empty-state">

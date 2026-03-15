@@ -268,6 +268,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           >
             Shortcuts
           </button>
+          <button
+            className="detail-tab"
+            data-active={tab === 'data' ? 'true' : undefined}
+            onClick={() => setTab('data')}
+          >
+            Data
+          </button>
         </div>
 
         <div className="detail-body">
@@ -433,6 +440,33 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     <span className="settings-toggle-track" />
                   </label>
                   <span className="settings-link-label">Show recent commands</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'data' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--p-text-muted)', marginBottom: 12 }}>
+                Export and manage your DevDock data.
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div className="detail-section-title" style={{ marginBottom: 8 }}>Export</div>
+                <button
+                  className="git-action-btn"
+                  style={{ padding: '6px 16px' }}
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = '/api/projects/export';
+                    a.download = `devdock-export-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                  }}
+                >
+                  Export Projects as JSON
+                </button>
+                <div style={{ fontSize: 11, color: 'var(--p-text-muted)', marginTop: 6 }}>
+                  Downloads all projects, overrides, favorites, and notes as a JSON file.
                 </div>
               </div>
             </div>

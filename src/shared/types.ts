@@ -30,6 +30,7 @@ export interface Project {
   hasGit: boolean;
   gitBranch: string | null;
   gitDirty: boolean;
+  gitDirtyCount: number;
 
   githubRepo: string | null;
   githubUrl: string | null;
@@ -153,6 +154,8 @@ export interface GitHubStatus {
   ci: 'pass' | 'fail' | 'running' | 'none';
   openPrs: number;
   openIssues: number;
+  stars: number;
+  forks: number;
 }
 
 // ──────────────────────────────────────

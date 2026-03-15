@@ -314,8 +314,21 @@ githubApi.get('/repo/:owner/:repo/status', async (c) => {
       openIssues = JSON.parse(issueOutput).length;
     } catch { /* ok */ }
 
-    return c.json({ ci, openPrs, openIssues });
+    // Fetch repo stats (stars, forks)
+    let stars = 0;
+    let forks = 0;
+    try {
+      const repoOutput = await runGh([
+        'repo', 'view', `${check.owner}/${check.repo}`,
+        '--json', 'stargazerCount,forkCount',
+      ]);
+      const repoData = JSON.parse(repoOutput);
+      stars = repoData.stargazerCount || 0;
+      forks = repoData.forkCount || 0;
+    } catch { /* ok */ }
+
+    return c.json({ ci, openPrs, openIssues, stars, forks });
   } catch {
-    return c.json({ ci: 'none', openPrs: 0, openIssues: 0 });
+    return c.json({ ci: 'none', openPrs: 0, openIssues: 0, stars: 0, forks: 0 });
   }
 });

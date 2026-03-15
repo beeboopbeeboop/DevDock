@@ -50,6 +50,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scanDone, setScanDone] = useState(false);
   const [showDirtyOnly, setShowDirtyOnly] = useState(false);
+  const [techStackFilter, setTechStackFilter] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -59,10 +60,16 @@ export function App() {
   const prevScanning = useRef(false);
   const actions = useProjectActions();
 
-  const displayProjects = useMemo(
-    () => showDirtyOnly ? projects.filter((p) => p.gitDirty) : projects,
-    [showDirtyOnly, projects],
-  );
+  const displayProjects = useMemo(() => {
+    let result = projects;
+    if (showDirtyOnly) result = result.filter((p) => p.gitDirty);
+    if (techStackFilter.size > 0) {
+      result = result.filter((p) =>
+        p.techStack.some((t) => techStackFilter.has(t))
+      );
+    }
+    return result;
+  }, [showDirtyOnly, techStackFilter, projects]);
 
   // Track scan completion for toast
   useEffect(() => {
@@ -194,6 +201,18 @@ export function App() {
     return acc;
   }, {});
 
+  const techStackCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of allProjects) {
+      for (const t of p.techStack) {
+        counts[t] = (counts[t] || 0) + 1;
+      }
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12);
+  }, [allProjects]);
+
   // Batch port status
   const portsToCheck = allProjects.filter((p) => p.devPort).map((p) => p.devPort!);
   const { data: portStatuses } = usePortStatusBatch(portsToCheck);
@@ -206,7 +225,7 @@ export function App() {
     .map((p) => ({ name: p.name, port: p.devPort! }));
 
   const activeFilterCount =
-    (filters.type ? 1 : 0) + (filters.status ? 1 : 0) + (filters.search ? 1 : 0) + (showDirtyOnly ? 1 : 0);
+    (filters.type ? 1 : 0) + (filters.status ? 1 : 0) + (filters.search ? 1 : 0) + (showDirtyOnly ? 1 : 0) + (techStackFilter.size > 0 ? 1 : 0);
 
   const selectProjectById = useCallback((id: string) => {
     const proj = allProjects.find((p) => p.id === id);
@@ -327,12 +346,35 @@ export function App() {
               {activeFilterCount > 0 && (
                 <button
                   className="type-pill type-pill-clear"
-                  onClick={() => { setFilters({ sort: filters.sort }); setShowDirtyOnly(false); }}
+                  onClick={() => { setFilters({ sort: filters.sort }); setShowDirtyOnly(false); setTechStackFilter(new Set()); }}
                 >
                   Clear
                 </button>
               )}
             </div>
+
+            {/* Tech stack pills */}
+            {techStackCounts.length > 0 && (
+              <div className="type-pills-bar tech-pills-bar">
+                {techStackCounts.map(([tech, count]) => {
+                  const isActive = techStackFilter.has(tech);
+                  return (
+                    <button
+                      key={tech}
+                      className={`type-pill type-pill-sm${isActive ? ' type-pill-active' : ''}`}
+                      onClick={() => {
+                        const next = new Set(techStackFilter);
+                        if (isActive) next.delete(tech); else next.add(tech);
+                        setTechStackFilter(next);
+                      }}
+                    >
+                      {tech}
+                      <span className="type-pill-count">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="content-area" key={`${viewMode}-${filters.type}-${filters.status}-${filters.search}`}>
               {isLoading ? (
@@ -365,6 +407,7 @@ export function App() {
                 selectedCount={selectedIds.size}
                 selectedIds={selectedIds}
                 onDeselectAll={() => setSelectedIds(new Set())}
+                projects={displayProjects}
               />
             )}
           </>

@@ -27,6 +27,7 @@ export function getDb(): Database {
       has_git INTEGER NOT NULL DEFAULT 0,
       git_branch TEXT,
       git_dirty INTEGER NOT NULL DEFAULT 0,
+      git_dirty_count INTEGER NOT NULL DEFAULT 0,
       github_repo TEXT,
       github_url TEXT,
       deploy_target TEXT NOT NULL DEFAULT 'none',

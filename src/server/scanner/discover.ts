@@ -71,6 +71,7 @@ export async function runScan(): Promise<number> {
         hasGit: gitInfo.hasGit,
         gitBranch: gitInfo.gitBranch,
         gitDirty: gitInfo.gitDirty,
+        gitDirtyCount: gitInfo.gitDirtyCount,
         githubRepo: gitInfo.githubRepo,
         githubUrl: gitInfo.githubUrl,
         deployTarget: detection.deployTarget,

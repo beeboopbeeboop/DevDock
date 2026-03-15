@@ -8,7 +8,7 @@ import { useProjectActions, useToggleFavorite } from '../hooks/useProjects';
 import { useGitHubStatus } from '../hooks/useGitHub';
 import { IconVSCode, IconCursor, IconGitHub, IconFolder, IconTerminal, IconPlay, IconClaude, IconExternalLink, IconStar } from './Icons';
 import { Tooltip } from './Tooltip';
-import { ContextMenu } from './ContextMenu';
+import { ContextMenu, type MenuItem } from './ContextMenu';
 import { useToast } from './Toast';
 import { loadSetting } from './SettingsPanel';
 
@@ -73,12 +73,17 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
 
   const enabled = getEnabledActions();
 
-  const allItems: { id: string; label: string; icon?: React.ReactNode; onClick: () => void; separator?: boolean; condition?: boolean }[] = [
-    { id: 'vscode', label: 'Open in VS Code', icon: <IconVSCode size={14} />, onClick: () => actions.openEditor(project.path, 'vscode') },
-    { id: 'cursor', label: 'Open in Cursor', icon: <IconCursor size={14} />, onClick: () => actions.openEditor(project.path, 'cursor') },
-    { id: 'claude', label: 'Open Claude Code Terminal', icon: <IconClaude size={14} />, onClick: () => actions.openClaudeTerminal(project.path) },
-    { id: 'terminal', label: 'Open Terminal', icon: <IconTerminal size={14} />, onClick: () => actions.openTerminal(project.path) },
-    { id: 'finder', label: 'Show in Finder', icon: <IconFolder size={14} />, onClick: () => actions.openFinder(project.path) },
+  // Build "Open In" submenu from enabled editor/terminal actions
+  const openInChildren: MenuItem[] = [
+    enabled.has('vscode') ? { label: 'VS Code', icon: <IconVSCode size={14} />, onClick: () => actions.openEditor(project.path, 'vscode') } : null,
+    enabled.has('cursor') ? { label: 'Cursor', icon: <IconCursor size={14} />, onClick: () => actions.openEditor(project.path, 'cursor') } : null,
+    enabled.has('claude') ? { label: 'Claude Code Terminal', icon: <IconClaude size={14} />, onClick: () => actions.openClaudeTerminal(project.path) } : null,
+    enabled.has('terminal') ? { label: 'Terminal', icon: <IconTerminal size={14} />, onClick: () => actions.openTerminal(project.path) } : null,
+    enabled.has('finder') ? { label: 'Finder', icon: <IconFolder size={14} />, onClick: () => actions.openFinder(project.path) } : null,
+  ].filter(Boolean) as MenuItem[];
+
+  const allItems: { id: string; label: string; icon?: React.ReactNode; onClick: () => void; separator?: boolean; condition?: boolean; children?: MenuItem[] }[] = [
+    { id: '_open-in', label: 'Open In...', icon: <IconExternalLink size={13} />, onClick: () => {}, children: openInChildren, condition: openInChildren.length > 0 },
     { id: 'open-localhost', label: `Open Localhost :${project.devPort}`, icon: <IconExternalLink size={13} />, onClick: () => actions.openUrl(`http://localhost:${project.devPort}`), condition: !!project.devPort },
     { id: 'open-github', label: 'Open on GitHub', icon: <IconGitHub size={13} />, onClick: () => actions.openUrl(project.githubUrl!), condition: !!project.githubUrl },
     { id: 'open-deploy', label: 'Open Deploy URL', icon: <IconExternalLink size={13} />, onClick: () => actions.openUrl(project.deployUrl!), condition: !!project.deployUrl },
@@ -96,6 +101,8 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
   const contextItems = allItems.filter(item => {
     if (item.separator) return true;
     if (item.condition === false) return false;
+    // Submenu items handle their own filtering, skip settings check for the group trigger
+    if (item.id.startsWith('_')) return true;
     return enabled.has(item.id);
   });
 
@@ -149,6 +156,26 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
                 <span className={`gh-ci-dot-card gh-ci-${ghStatus.ci}`} />
               </Tooltip>
             )}
+            {ghStatus && (ghStatus.stars > 0 || ghStatus.forks > 0) && (
+              <>
+                {ghStatus.stars > 0 && (
+                  <Tooltip content={`${ghStatus.stars} star${ghStatus.stars !== 1 ? 's' : ''}`}>
+                    <span className="gh-stat-badge">
+                      <svg width={10} height={10} viewBox="0 0 24 24" fill="var(--p-warning)" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26" /></svg>
+                      {ghStatus.stars}
+                    </span>
+                  </Tooltip>
+                )}
+                {ghStatus.forks > 0 && (
+                  <Tooltip content={`${ghStatus.forks} fork${ghStatus.forks !== 1 ? 's' : ''}`}>
+                    <span className="gh-stat-badge">
+                      <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+                      {ghStatus.forks}
+                    </span>
+                  </Tooltip>
+                )}
+              </>
+            )}
             <Tooltip content={project.status}>
               <div
                 className="project-status-dot"
@@ -184,8 +211,8 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
               <>
                 <span>{project.gitBranch || 'no branch'}</span>
                 {project.gitDirty && (
-                  <Tooltip content="Uncommitted changes">
-                    <span className="dirty-dot" />
+                  <Tooltip content={`${project.gitDirtyCount || '?'} uncommitted change${project.gitDirtyCount !== 1 ? 's' : ''}`}>
+                    <span className="dirty-badge">{project.gitDirtyCount || '*'}</span>
                   </Tooltip>
                 )}
               </>

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PortEntry, PortConflict } from '../types/project';
 
-export function useAllPorts() {
+export function useAllPorts(refetchInterval: number | false = false) {
   return useQuery<PortEntry[]>({
     queryKey: ['ports-all'],
     queryFn: async () => {
@@ -10,7 +10,7 @@ export function useAllPorts() {
       return res.json();
     },
     staleTime: 30_000,
-    refetchInterval: false,
+    refetchInterval,
   });
 }
 

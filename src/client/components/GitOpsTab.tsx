@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Project } from '../types/project';
-import { useGitStatus, useGitBranches, useGitStage, useGitCommit, useGitPush, useGitPull, useGitCheckout } from '../hooks/useGitOps';
+import { useGitStatus, useGitBranches, useGitStage, useGitCommit, useGitPush, useGitPull, useGitCheckout, useGitStashList, useGitStash, useGitStashPop } from '../hooks/useGitOps';
 import { IconGitCommit, IconWand } from './Icons';
 import { useToast } from './Toast';
 import { DiffViewer } from './DiffViewer';
@@ -48,8 +48,13 @@ export function GitOpsTab({ project }: GitOpsTabProps) {
   const pushMutation = useGitPush(project.path);
   const pullMutation = useGitPull(project.path);
   const checkoutMutation = useGitCheckout(project.path);
+  const { data: stashList = [], refetch: refetchStashes } = useGitStashList(project.path, project.hasGit);
+  const stashMutation = useGitStash(project.path);
+  const stashPopMutation = useGitStashPop(project.path);
 
   const [commitMsg, setCommitMsg] = useState('');
+  const [showStash, setShowStash] = useState(false);
+  const [stashMsg, setStashMsg] = useState('');
   const [showBranches, setShowBranches] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [showNewBranch, setShowNewBranch] = useState(false);
@@ -380,6 +385,72 @@ export function GitOpsTab({ project }: GitOpsTabProps) {
           Working tree clean
         </div>
       )}
+
+      {/* Stash section */}
+      <div className="git-stash-section">
+        <div className="git-file-section-header" style={{ marginTop: 12 }}>
+          <button
+            className="detail-section-title"
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, font: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => { setShowStash(!showStash); if (!showStash) refetchStashes(); }}
+          >
+            <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: showStash ? 'rotate(90deg)' : 'none', transition: 'transform 150ms ease' }}>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            Stash {stashList.length > 0 && <span className="topbar-meta">{stashList.length}</span>}
+          </button>
+          {hasChanges && (
+            <button
+              className="git-action-btn-sm"
+              onClick={() => {
+                stashMutation.mutate(stashMsg || undefined, {
+                  onSuccess: (data) => {
+                    if (data.ok) { toast('Changes stashed', 'success'); setStashMsg(''); }
+                    else toast('Stash failed', 'error');
+                  },
+                });
+              }}
+              disabled={stashMutation.isPending}
+            >
+              Stash changes
+            </button>
+          )}
+        </div>
+        {showStash && (
+          <div style={{ padding: '0 0 8px' }}>
+            {hasChanges && (
+              <input
+                type="text"
+                className="git-commit-input"
+                style={{ fontSize: 11, padding: '5px 8px', margin: '4px 0 8px', width: '100%' }}
+                placeholder="Stash message (optional)..."
+                value={stashMsg}
+                onChange={(e) => setStashMsg(e.target.value)}
+              />
+            )}
+            {stashList.length > 0 ? stashList.map((s, i) => (
+              <div key={s.ref} className="git-file-row" style={{ justifyContent: 'space-between' }}>
+                <span className="git-file-name" style={{ fontSize: 11 }}>{s.message || s.ref}</span>
+                <button
+                  className="git-action-btn-sm"
+                  onClick={() => {
+                    stashPopMutation.mutate(i, {
+                      onSuccess: (data) => {
+                        toast(data.ok ? 'Stash applied' : 'Stash pop failed', data.ok ? 'success' : 'error');
+                      },
+                    });
+                  }}
+                  disabled={stashPopMutation.isPending}
+                >
+                  Pop
+                </button>
+              </div>
+            )) : (
+              <div style={{ fontSize: 11, color: 'var(--p-text-muted)', padding: '4px 0' }}>No stashes</div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Commit history */}
       <div className="git-history-section">

@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { IconVSCode, IconTerminal } from './Icons';
+import { IconVSCode, IconCursor, IconTerminal, IconFolder } from './Icons';
 import { useToast } from './Toast';
+import type { Project } from '../types/project';
 
 interface BatchActionBarProps {
   selectedCount: number;
   selectedIds: Set<string>;
   onDeselectAll: () => void;
+  projects?: Project[];
 }
 
-export function BatchActionBar({ selectedCount, selectedIds, onDeselectAll }: BatchActionBarProps) {
+export function BatchActionBar({ selectedCount, selectedIds, onDeselectAll, projects = [] }: BatchActionBarProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -60,6 +62,14 @@ export function BatchActionBar({ selectedCount, selectedIds, onDeselectAll }: Ba
         </button>
         <button
           className="batch-btn"
+          onClick={() => runBatch('open-cursor', 'Open Cursor')}
+          disabled={loading !== null}
+        >
+          <IconCursor size={12} />
+          Open in Cursor
+        </button>
+        <button
+          className="batch-btn"
           onClick={() => runBatch('open-terminal', 'Open Terminal')}
           disabled={loading !== null}
         >
@@ -68,10 +78,25 @@ export function BatchActionBar({ selectedCount, selectedIds, onDeselectAll }: Ba
         </button>
         <button
           className="batch-btn"
+          onClick={() => runBatch('open-finder', 'Open Finder')}
+          disabled={loading !== null}
+        >
+          <IconFolder size={12} />
+          Finder
+        </button>
+        <button
+          className="batch-btn"
           onClick={() => runBatch('npm-install', 'npm install')}
           disabled={loading !== null}
         >
           {loading === 'npm-install' ? 'Installing...' : 'npm install'}
+        </button>
+        <button
+          className="batch-btn"
+          onClick={() => runBatch('git-fetch', 'Git Fetch')}
+          disabled={loading !== null}
+        >
+          {loading === 'git-fetch' ? 'Fetching...' : 'Git Fetch'}
         </button>
       </div>
       <button className="batch-btn batch-btn-deselect" onClick={onDeselectAll}>

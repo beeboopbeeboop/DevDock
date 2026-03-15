@@ -16,6 +16,7 @@ interface ProjectRow {
   has_git: number;
   git_branch: string | null;
   git_dirty: number;
+  git_dirty_count: number;
   github_repo: string | null;
   github_url: string | null;
   deploy_target: string;
@@ -49,6 +50,7 @@ function rowToProject(row: ProjectRow): Project {
     hasGit: Boolean(row.has_git),
     gitBranch: row.git_branch,
     gitDirty: Boolean(row.git_dirty),
+    gitDirtyCount: row.git_dirty_count || 0,
     githubRepo: row.github_repo,
     githubUrl: row.github_url,
     deployTarget: row.deploy_target as Project['deployTarget'],
@@ -109,9 +111,9 @@ export function upsertProject(project: Partial<Project> & { id: string; path: st
   const db = getDb();
   db.prepare(`
     INSERT INTO projects (id, name, path, type, tech_stack, dev_command, dev_port,
-      has_git, git_branch, git_dirty, github_repo, github_url,
+      has_git, git_branch, git_dirty, git_dirty_count, github_repo, github_url,
       deploy_target, deploy_url, has_hanlan_core, last_modified, last_scanned, description)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
     ON CONFLICT(path) DO UPDATE SET
       name = excluded.name,
       type = excluded.type,
@@ -121,6 +123,7 @@ export function upsertProject(project: Partial<Project> & { id: string; path: st
       has_git = excluded.has_git,
       git_branch = excluded.git_branch,
       git_dirty = excluded.git_dirty,
+      git_dirty_count = excluded.git_dirty_count,
       github_repo = excluded.github_repo,
       github_url = excluded.github_url,
       deploy_target = excluded.deploy_target,
@@ -140,6 +143,7 @@ export function upsertProject(project: Partial<Project> & { id: string; path: st
     project.hasGit ? 1 : 0,
     project.gitBranch || null,
     project.gitDirty ? 1 : 0,
+    project.gitDirtyCount || 0,
     project.githubRepo || null,
     project.githubUrl || null,
     project.deployTarget || 'none',

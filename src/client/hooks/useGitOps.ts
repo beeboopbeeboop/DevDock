@@ -102,6 +102,55 @@ export function useGitPull(path: string) {
   });
 }
 
+export function useGitStashList(path: string, enabled = false) {
+  return useQuery<{ ref: string; message: string }[]>({
+    queryKey: ['git-stash-list', path],
+    queryFn: async () => {
+      const res = await fetch(`/api/actions/git-stash-list?path=${encodeURIComponent(path)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useGitStash(path: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (message?: string) => {
+      const res = await fetch('/api/actions/git-stash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, message }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['git-status', path] });
+      qc.invalidateQueries({ queryKey: ['git-stash-list', path] });
+    },
+  });
+}
+
+export function useGitStashPop(path: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (index?: number) => {
+      const res = await fetch('/api/actions/git-stash-pop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, index }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['git-status', path] });
+      qc.invalidateQueries({ queryKey: ['git-stash-list', path] });
+    },
+  });
+}
+
 export function useGitCheckout(path: string) {
   const qc = useQueryClient();
   return useMutation({

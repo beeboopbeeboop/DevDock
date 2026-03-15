@@ -35,6 +35,21 @@ projectsApi.post('/reorder', async (c) => {
   return c.json({ ok: true });
 });
 
+projectsApi.get('/export', async (c) => {
+  const projects = getProjects();
+  const db = (await import('../db/schema.js')).getDb();
+  const overrides = db.prepare('SELECT * FROM user_overrides').all();
+  const exportData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    projects,
+    overrides,
+  };
+  c.header('Content-Type', 'application/json');
+  c.header('Content-Disposition', `attachment; filename="devdock-export-${new Date().toISOString().slice(0, 10)}.json"`);
+  return c.json(exportData);
+});
+
 projectsApi.post('/:id/favorite', async (c) => {
   const id = c.req.param('id');
   const db = (await import('../db/schema.js')).getDb();

@@ -595,6 +595,53 @@ actionsApi.post('/git-checkout', async (c) => {
 });
 
 // ═══════════════════════════════════
+// Git Stash
+// ═══════════════════════════════════
+
+actionsApi.post('/git-stash', async (c) => {
+  const { path, message } = await c.req.json<{ path: string; message?: string }>();
+  const check = requireValidPath(path);
+  if (!check.valid) return c.json({ error: check.error }, 400);
+  try {
+    const args = message ? ['stash', 'push', '-m', message] : ['stash', 'push'];
+    const result = await runGit(args, check.resolved);
+    return c.json({ ok: result.ok, output: result.output });
+  } catch {
+    return c.json({ ok: false, error: 'Stash failed' }, 500);
+  }
+});
+
+actionsApi.post('/git-stash-pop', async (c) => {
+  const { path, index } = await c.req.json<{ path: string; index?: number }>();
+  const check = requireValidPath(path);
+  if (!check.valid) return c.json({ error: check.error }, 400);
+  try {
+    const args = index !== undefined ? ['stash', 'pop', `stash@{${index}}`] : ['stash', 'pop'];
+    const result = await runGit(args, check.resolved);
+    return c.json({ ok: result.ok, output: result.output });
+  } catch {
+    return c.json({ ok: false, error: 'Stash pop failed' }, 500);
+  }
+});
+
+actionsApi.get('/git-stash-list', async (c) => {
+  const path = c.req.query('path');
+  const check = requireValidPath(path);
+  if (!check.valid) return c.json({ error: check.error }, 400);
+  try {
+    const result = await runGit(['stash', 'list', '--format=%gd|%s'], check.resolved);
+    if (!result.ok || !result.output.trim()) return c.json([]);
+    const stashes = result.output.trim().split('\n').map((line) => {
+      const [ref, ...msgParts] = line.split('|');
+      return { ref, message: msgParts.join('|') };
+    });
+    return c.json(stashes);
+  } catch {
+    return c.json([]);
+  }
+});
+
+// ═══════════════════════════════════
 // Integrations Status
 // ═══════════════════════════════════
 
@@ -1098,7 +1145,7 @@ actionsApi.post('/save-notes', async (c) => {
 // Batch Actions
 // ─────────────────────────────────────────────
 
-const BATCH_ACTIONS = new Set(['pull', 'open-vscode', 'open-terminal', 'npm-install']);
+const BATCH_ACTIONS = new Set(['pull', 'open-vscode', 'open-cursor', 'open-terminal', 'open-finder', 'npm-install', 'git-fetch']);
 
 actionsApi.post('/batch', async (c) => {
   const { action, projectIds } = await c.req.json();
@@ -1139,6 +1186,20 @@ actionsApi.post('/batch', async (c) => {
         case 'open-terminal': {
           Bun.spawn(['open', '-a', 'Terminal', pathCheck.resolved]);
           return { projectId: p.id, ok: true };
+        }
+        case 'open-cursor': {
+          const cursorBin = findEditor('cursor');
+          if (!cursorBin) return { projectId: p.id, ok: false, output: 'Cursor not found' };
+          Bun.spawn([cursorBin, pathCheck.resolved]);
+          return { projectId: p.id, ok: true };
+        }
+        case 'open-finder': {
+          Bun.spawn(['open', pathCheck.resolved]);
+          return { projectId: p.id, ok: true };
+        }
+        case 'git-fetch': {
+          const git = await runGit(['fetch'], pathCheck.resolved);
+          return { projectId: p.id, ok: git.ok, output: git.output.slice(0, 200) };
         }
         case 'npm-install': {
           const proc = Bun.spawn(['npm', 'install'], {
