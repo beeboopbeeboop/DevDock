@@ -1,0 +1,5 @@
+node_modules/
+devdock.db
+devdock.db-shm
+devdock.db-wal
+.vite/

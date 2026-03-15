@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+
+  /* Backgrounds */
+  --p-bg:          #09090b;
+  --p-bg-panel:    #111113;
+  --p-bg-elevated: #18181b;
+  --p-bg-input:    #0c0c0e;
+  --p-bg-canvas:   #09090b;
+  --p-bg-hover:    rgba(255,255,255,0.05);
+  --p-surface:     rgba(255,255,255,0.04);
+  --p-surface-hover: rgba(255,255,255,0.07);
+
+  /* Subtle interactive (buttons, containers) */
+  --p-subtle-bg:     rgba(255,255,255,0.06);
+  --p-subtle-bg-hover: rgba(255,255,255,0.1);
+  --p-subtle-border: rgba(255,255,255,0.1);
+  --p-subtle-border-hover: rgba(255,255,255,0.14);
+
+  /* Borders */
+  --p-border:       rgba(255,255,255,0.07);
+  --p-border-hover: rgba(255,255,255,0.14);
+  --p-border-focus: rgba(99,102,241,0.5);
+
+  /* Text */
+  --p-text:        rgba(255,255,255,0.88);
+  --p-text-dim:    rgba(255,255,255,0.5);
+  --p-text-muted:  rgba(255,255,255,0.28);
+
+  /* Accent — indigo */
+  --p-accent:      #6366f1;
+  --p-accent-hover:#818cf8;
+  --p-accent-dim:  rgba(99,102,241,0.15);
+  --p-accent-glow: rgba(99,102,241,0.25);
+
+  /* Semantic */
+  --p-danger:      #f87171;
+  --p-success:     #86efac;
+  --p-warning:     #fbbf24;
+
+  /* Typography */
+  --p-font:        'Inter', system-ui, -apple-system, sans-serif;
+  --p-font-mono:   'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+  /* Transitions */
+  --p-ease:            cubic-bezier(0.16, 1, 0.3, 1);
+  --p-transition-fast: 150ms var(--p-ease);
+  --p-transition:      300ms var(--p-ease);
+
+  /* Shadows */
+  --p-shadow-panel:    0 1px 3px rgba(0,0,0,0.4);
+  --p-shadow-dropdown: 0 8px 32px rgba(0,0,0,0.5);
+  --p-shadow-focus:    0 0 0 2px var(--p-border-focus);
+
+  /* Radii */
+  --p-radius-sm: 6px;
+  --p-radius:    8px;
+  --p-radius-lg: 12px;
+
+  /* Z-index layers — ordered stack */
+  --z-dropdown:   100;   /* dropdowns, popovers, selects */
+  --z-modal:      500;   /* detail panel / modal backdrop + content */
+  --z-overlay:    700;   /* things that float above modals (context menus, tooltips inside modals) */
+  --z-cmdpalette: 900;   /* command palette — above everything except toasts */
+  --z-tooltip:    1000;  /* tooltips — always on top */
+  --z-toast:      1100;  /* toast notifications — highest */
+
+  /* Sidebar */
+  --sidebar-width: 260px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--p-font);
+  background: var(--p-bg);
+  color: var(--p-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
