@@ -3,7 +3,8 @@ import {
 } from '../types/project';
 import type { Project, ProjectStatus } from '../types/project';
 import type { AppView } from '../App';
-import { IconRefresh, IconGitHub, IconExternalLink, IconGitCommit, IconSearch, IconDocker } from './Icons';
+import { IconRefresh, IconGitHub, IconExternalLink, IconGitCommit, IconSearch, IconDocker, IconShield, IconChart } from './Icons';
+import { AnimatedNumber } from './AnimatedNumber';
 
 interface RunningServer {
   name: string;
@@ -101,7 +102,7 @@ export function Sidebar({
             Ports
             {runningServers.length > 0 && (
               <span className="sidebar-item-count" style={{ color: 'var(--p-success)' }}>
-                {runningServers.length}
+                <AnimatedNumber value={runningServers.length} />
               </span>
             )}
           </button>
@@ -126,6 +127,22 @@ export function Sidebar({
               <line x1="15.5" y1="7.5" x2="14" y2="16" />
             </svg>
             Graph
+          </button>
+          <button
+            className="sidebar-item"
+            data-active={appView === 'env' ? 'true' : undefined}
+            onClick={() => onChangeView?.('env')}
+          >
+            <IconShield size={13} />
+            Env Sync
+          </button>
+          <button
+            className="sidebar-item"
+            data-active={appView === 'insights' ? 'true' : undefined}
+            onClick={() => onChangeView?.('insights')}
+          >
+            <IconChart size={13} />
+            Insights
           </button>
           <button
             className="sidebar-item"
@@ -157,7 +174,7 @@ export function Sidebar({
                   }}
                 />
                 {status.charAt(0).toUpperCase() + status.slice(1)}
-                <span className="sidebar-item-count">{count}</span>
+                <span className="sidebar-item-count"><AnimatedNumber value={count} /></span>
               </button>
             );
           })}
@@ -169,7 +186,7 @@ export function Sidebar({
             >
               <IconGitCommit size={12} color="var(--p-warning)" />
               Uncommitted
-              <span className="sidebar-item-count" style={{ color: 'var(--p-warning)' }}>{dirtyCount}</span>
+              <span className="sidebar-item-count" style={{ color: 'var(--p-warning)' }}><AnimatedNumber value={dirtyCount} /></span>
             </button>
           )}
           {activeStatus && (

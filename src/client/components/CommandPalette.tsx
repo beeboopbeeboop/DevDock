@@ -433,7 +433,19 @@ export function CommandPalette({
     const cmds: Command[] = [];
 
     // All projects
+    const TYPE_ICONS: Record<string, string> = {
+      'cep-plugin': 'Ae', 'nextjs': 'N', 'vite-react': 'V', 'framer-plugin': 'F',
+      'cloudflare-worker': 'CF', 'hono-server': 'H', 'static-site': 'S',
+      'node-package': 'np', 'swift-app': 'Sw', 'unknown': '?',
+    };
+    const now = Date.now();
+    const RECENT_THRESHOLD = 24 * 60 * 60 * 1000; // 24h
+
     projects.forEach((p) => {
+      const isRecent = p.lastModified && (now - new Date(p.lastModified).getTime()) < RECENT_THRESHOLD;
+      const extraKw = `${p.gitDirty ? ' dirty' : ''}${isRecent ? ' recent' : ''}`;
+      const typeIcon = TYPE_ICONS[p.type] || '?';
+
       cmds.push({
         id: `project-${p.id}`,
         label: p.name,
@@ -447,12 +459,48 @@ export function CommandPalette({
               color: PROJECT_TYPE_COLORS[p.type],
             }}
           >
-            {p.name.slice(0, 2)}
+            {typeIcon}
           </span>
         ),
         category: 'project',
         action: () => drillIntoProject(p),
-        keywords: `${p.path} ${p.techStack.join(' ')} ${p.type}`,
+        keywords: `${p.path} ${p.techStack.join(' ')} ${p.type}${extraKw}`,
+      });
+
+      // Direct action commands (top-level, no drill-in needed)
+      if (p.devCommand) {
+        cmds.push({
+          id: `da-start-${p.id}`,
+          label: `Start Dev: ${p.name}`,
+          icon: <IconPlay size={12} color="var(--p-success)" />,
+          category: 'action',
+          action: () => { actions.startDev(p.path, p.devCommand!); toast('Dev server starting', 'info'); onClose(); },
+          keywords: `${p.name} start dev run server${extraKw}`,
+        });
+      }
+      if (p.hasGit) {
+        cmds.push({
+          id: `da-pull-${p.id}`,
+          label: `Git Pull: ${p.name}`,
+          icon: <IconGitCommit size={13} />,
+          category: 'git',
+          async: true,
+          action: async () => {
+            const res = await fetch('/api/actions/git-pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p.path }) });
+            const data = await res.json();
+            toast(data.ok ? 'Pulled successfully' : 'Pull failed', data.ok ? 'success' : 'error');
+            onClose();
+          },
+          keywords: `${p.name} pull git fetch${extraKw}`,
+        });
+      }
+      cmds.push({
+        id: `da-code-${p.id}`,
+        label: `Open in VS Code: ${p.name}`,
+        icon: <IconVSCode size={14} />,
+        category: 'action',
+        action: () => { actions.openEditor(p.path, 'vscode'); onClose(); },
+        keywords: `${p.name} vscode code open editor${extraKw}`,
       });
     });
 
@@ -635,13 +683,26 @@ export function CommandPalette({
       return result;
     }
 
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const q = query.toLowerCase();
+    const words = q.split(/\s+/).filter(Boolean);
     return commands
-      .filter((c) => {
+      .map((c) => {
         const hay = `${c.label} ${c.description || ''} ${c.keywords || ''}`.toLowerCase();
-        return words.every((w) => hay.includes(w));
+        if (!words.every((w) => hay.includes(w))) return null;
+        let score = 0;
+        const label = c.label.toLowerCase();
+        if (label === q) score += 100;
+        else if (label.startsWith(words[0])) score += 50;
+        else if (label.includes(q)) score += 25;
+        if (c.keywords?.includes('dirty')) score += 10;
+        if (c.keywords?.includes('recent')) score += 5;
+        // Boost project entries over direct actions when searching by name
+        if (c.category === 'project') score += 3;
+        return { ...c, _score: score };
       })
-      .slice(0, 20);
+      .filter(Boolean)
+      .sort((a, b) => b!._score - a!._score)
+      .slice(0, 20) as Command[];
   }, [query, commands, mode, branches, doBranchSwitch]);
 
   // ─── Group filtered results by category ───

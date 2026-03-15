@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react';
 import type { Project } from '../types/project';
 import {
   PROJECT_TYPE_LABELS,
@@ -9,6 +10,7 @@ import { useGitHubStatus } from '../hooks/useGitHub';
 import { IconVSCode, IconCursor, IconGitHub, IconFolder, IconTerminal, IconPlay, IconClaude, IconExternalLink, IconStar } from './Icons';
 import { Tooltip } from './Tooltip';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { QuickPeek } from './QuickPeek';
 import { useToast } from './Toast';
 import { loadSetting } from './SettingsPanel';
 
@@ -62,6 +64,24 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
   const toggleFav = useToggleFavorite();
   const { toast } = useToast();
   const { data: ghStatus } = useGitHubStatus(project.githubRepo);
+  const [showPeek, setShowPeek] = useState(false);
+  const peekTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    peekTimer.current = setTimeout(() => setShowPeek(true), 600);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+    setShowPeek(false);
+  }, []);
+
+  const handleClick = useCallback(() => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    setShowPeek(false);
+    onClick();
+  }, [onClick]);
   const typeColor = PROJECT_TYPE_COLORS[project.type] || '#6b7280';
   const statusColor = STATUS_COLORS[project.status] || '#6b7280';
 
@@ -108,7 +128,14 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
 
   return (
     <ContextMenu items={contextItems}>
-      <div className="project-card" onClick={onClick}>
+      <div
+        className={`project-card${project.gitDirty ? ' project-card-dirty' : ''}`}
+        onClick={handleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{ position: 'relative' }}
+      >
+        {showPeek && <QuickPeek project={project} isServerRunning={isServerRunning} />}
         <div className="project-card-header">
           <div
             className="project-type-icon"

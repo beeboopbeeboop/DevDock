@@ -431,3 +431,70 @@ envApi.get('/audit', async (c) => {
     projectsWithIssues: new Set(issues.map((i) => i.projectId)).size,
   });
 });
+
+// GET /api/env/cross-sync — cross-project key presence matrix
+envApi.get('/cross-sync', async (c) => {
+  const db = (await import('../db/schema.js')).getDb();
+  const projects = db.prepare('SELECT id, name, path FROM projects ORDER BY name').all() as {
+    id: string; name: string; path: string;
+  }[];
+
+  // Collect keys per project from .env and .env.example
+  const projectKeys: { id: string; name: string; keys: Map<string, string> }[] = [];
+
+  for (const project of projects) {
+    const keys = new Map<string, string>(); // key -> 'present' | 'empty'
+
+    for (const envFile of ['.env', '.env.local', '.env.example']) {
+      const filePath = join(project.path, envFile);
+      if (!existsSync(filePath)) continue;
+
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        const vars = parseEnvFile(content).filter((v) => !v.isComment && !v.isBlank && v.key);
+        for (const v of vars) {
+          if (!keys.has(v.key)) {
+            keys.set(v.key, v.value ? 'present' : 'empty');
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    if (keys.size > 0) {
+      projectKeys.push({ id: project.id, name: project.name, keys });
+    }
+  }
+
+  // Build matrix — only include keys that appear in 2+ projects
+  const keyCounts = new Map<string, number>();
+  for (const pk of projectKeys) {
+    for (const key of pk.keys.keys()) {
+      keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
+    }
+  }
+
+  const sharedKeys = [...keyCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => {
+      // Sort by how many projects are MISSING this key (most gaps first)
+      const aMissing = projectKeys.length - a[1];
+      const bMissing = projectKeys.length - b[1];
+      if (bMissing !== aMissing) return bMissing - aMissing;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([key]) => key);
+
+  const matrix: Record<string, Record<string, 'present' | 'empty' | 'missing'>> = {};
+  for (const key of sharedKeys) {
+    matrix[key] = {};
+    for (const pk of projectKeys) {
+      matrix[key][pk.id] = pk.keys.has(key) ? (pk.keys.get(key) as 'present' | 'empty') : 'missing';
+    }
+  }
+
+  return c.json({
+    keys: sharedKeys,
+    projects: projectKeys.map((pk) => ({ id: pk.id, name: pk.name })),
+    matrix,
+  });
+});

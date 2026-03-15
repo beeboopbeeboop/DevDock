@@ -30,6 +30,8 @@ export interface DevDockConfig {
   sharedLibraries: SharedLibrary[];
   /** File/dir names that indicate a directory is a project */
   projectSignals: string[];
+  /** Auto-scan interval in minutes (0 = disabled) */
+  autoScanInterval: number;
 }
 
 const CONFIG_DIR = join(homedir(), '.devdock');
@@ -52,6 +54,7 @@ const DEFAULT_CONFIG: DevDockConfig = {
     'CSXS', 'manifest.xml', 'index.html', 'Package.swift',
     'wrangler.toml', 'vercel.json', '.git',
   ],
+  autoScanInterval: 0,
 };
 
 let cachedConfig: DevDockConfig | null = null;

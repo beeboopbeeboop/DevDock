@@ -188,3 +188,76 @@ export function updateProjectPriority(projectId: string, priority: number) {
     ON CONFLICT(project_id) DO UPDATE SET sort_order = excluded.sort_order
   `).run(projectId, priority);
 }
+
+// ──────────────────────────────────────
+// Snapshots (for Insights)
+// ──────────────────────────────────────
+
+export function captureSnapshot() {
+  const db = getDb();
+
+  const total = (db.prepare('SELECT COUNT(*) as c FROM projects').get() as { c: number }).c;
+  const dirtyRepos = (db.prepare('SELECT COUNT(*) as c FROM projects WHERE git_dirty = 1').get() as { c: number }).c;
+  const totalDirtyFiles = (db.prepare('SELECT COALESCE(SUM(git_dirty_count), 0) as c FROM projects').get() as { c: number }).c;
+  const totalDeps = (db.prepare('SELECT COUNT(*) as c FROM project_deps').get() as { c: number }).c;
+
+  const typeRows = db.prepare('SELECT type, COUNT(*) as c FROM projects GROUP BY type').all() as { type: string; c: number }[];
+  const typeBreakdown: Record<string, number> = {};
+  for (const r of typeRows) typeBreakdown[r.type] = r.c;
+
+  const statusRows = db.prepare(`
+    SELECT COALESCE(o.custom_status, p.status) as s, COUNT(*) as c
+    FROM projects p LEFT JOIN user_overrides o ON p.id = o.project_id
+    GROUP BY s
+  `).all() as { s: string; c: number }[];
+  const statusBreakdown: Record<string, number> = {};
+  for (const r of statusRows) statusBreakdown[r.s] = r.c;
+
+  db.prepare(`
+    INSERT INTO snapshots (total_projects, dirty_repos, total_dirty_files, total_dependencies, type_breakdown, status_breakdown)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(total, dirtyRepos, totalDirtyFiles, totalDeps, JSON.stringify(typeBreakdown), JSON.stringify(statusBreakdown));
+}
+
+export interface SnapshotRow {
+  id: number;
+  captured_at: string;
+  total_projects: number;
+  dirty_repos: number;
+  total_dirty_files: number;
+  total_dependencies: number;
+  type_breakdown: string;
+  status_breakdown: string;
+}
+
+export function getSnapshots(range: '24h' | '7d' | '30d' | '90d' = '7d'): SnapshotRow[] {
+  const db = getDb();
+  const offsetMap: Record<string, string> = {
+    '24h': '-24 hours',
+    '7d': '-7 days',
+    '30d': '-30 days',
+    '90d': '-90 days',
+  };
+
+  const rows = db.prepare(`
+    SELECT * FROM snapshots
+    WHERE captured_at >= datetime('now', ?)
+    ORDER BY captured_at ASC
+  `).all(offsetMap[range]) as SnapshotRow[];
+
+  // Downsample for large ranges to keep chart smooth (~100 points max)
+  if (rows.length > 120) {
+    const step = Math.ceil(rows.length / 100);
+    const sampled: SnapshotRow[] = [];
+    for (let i = 0; i < rows.length; i += step) {
+      sampled.push(rows[i]);
+    }
+    // Always include the last point
+    if (sampled[sampled.length - 1] !== rows[rows.length - 1]) {
+      sampled.push(rows[rows.length - 1]);
+    }
+    return sampled;
+  }
+
+  return rows;
+}

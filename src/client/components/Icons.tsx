@@ -237,6 +237,22 @@ export function IconSearch({ size = 16, color = 'currentColor', className }: Ico
   );
 }
 
+export function IconShield({ size = 16, color = 'currentColor', className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+export function IconChart({ size = 16, color = 'currentColor', className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
+
 export function IconCheckbox({ size = 16, color = 'currentColor', className, checked }: IconProps & { checked?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>

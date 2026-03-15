@@ -243,3 +243,20 @@ export interface ComposeService {
   state: string;
   ports: string;
 }
+
+// ──────────────────────────────────────
+// Insights / Analytics types
+// ──────────────────────────────────────
+
+export interface Snapshot {
+  id: number;
+  capturedAt: string;
+  totalProjects: number;
+  dirtyRepos: number;
+  totalDirtyFiles: number;
+  totalDependencies: number;
+  typeBreakdown: Record<string, number>;
+  statusBreakdown: Record<string, number>;
+}
+
+export type InsightsRange = '24h' | '7d' | '30d' | '90d';

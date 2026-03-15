@@ -48,7 +48,7 @@ const DEFAULT_CONTEXT_ACTIONS: ContextAction[] = [
   { id: 'notes', label: 'Project Notes', enabled: true },
 ];
 
-type SettingsTab = 'integrations' | 'quick-links' | 'context-menu' | 'shortcuts';
+type SettingsTab = 'integrations' | 'quick-links' | 'context-menu' | 'shortcuts' | 'scanning' | 'data';
 
 const INTEGRATION_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   github: IconGitHub,
@@ -150,10 +150,25 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [showRecents, setShowRecents] = useState<boolean>(() =>
     loadSetting('show-recent-commands', true),
   );
+  const [autoScanInterval, setAutoScanInterval] = useState<number>(0);
+  const [autoScanLoading, setAutoScanLoading] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() =>
+    loadSetting('desktop-notifications', false),
+  );
   const [recording, setRecording] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newUrl, setNewUrl] = useState('');
+
+  // Fetch current auto-scan setting from server
+  useEffect(() => {
+    fetch('/api/scan/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (typeof data.autoScanInterval === 'number') setAutoScanInterval(data.autoScanInterval);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     saveSetting('quick-links', quickLinks);
@@ -227,6 +242,33 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     );
   };
 
+  const updateAutoScan = async (interval: number) => {
+    setAutoScanInterval(interval);
+    setAutoScanLoading(true);
+    try {
+      await fetch('/api/scan/auto', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval }),
+      });
+    } catch { /* ignore */ }
+    setAutoScanLoading(false);
+  };
+
+  const handleToggleNotifications = async () => {
+    if (!notificationsEnabled) {
+      if (!('Notification' in window)) return;
+      const result = await Notification.requestPermission();
+      if (result === 'granted') {
+        setNotificationsEnabled(true);
+        saveSetting('desktop-notifications', true);
+      }
+    } else {
+      setNotificationsEnabled(false);
+      saveSetting('desktop-notifications', false);
+    }
+  };
+
   return (
     <div className={`detail-backdrop${closing ? ' closing' : ''}`} style={{ zIndex: 700 }} onClick={handleClose}>
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
@@ -267,6 +309,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             onClick={() => setTab('shortcuts')}
           >
             Shortcuts
+          </button>
+          <button
+            className="detail-tab"
+            data-active={tab === 'scanning' ? 'true' : undefined}
+            onClick={() => setTab('scanning')}
+          >
+            Scanning
           </button>
           <button
             className="detail-tab"
@@ -442,6 +491,74 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   <span className="settings-link-label">Show recent commands</span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === 'scanning' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--p-text-muted)', marginBottom: 12 }}>
+                Automatically rescan your project directories on an interval.
+              </div>
+              <div className="settings-list">
+                <div className="settings-link-row">
+                  <span className="settings-link-label" style={{ flex: 1 }}>Auto-scan</span>
+                  <select
+                    className="p-select"
+                    value={autoScanInterval}
+                    onChange={(e) => updateAutoScan(Number(e.target.value))}
+                    disabled={autoScanLoading}
+                    style={{
+                      background: 'var(--p-bg-elevated)',
+                      color: 'var(--p-text)',
+                      border: '1px solid var(--p-border)',
+                      borderRadius: 6,
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value={0}>Off</option>
+                    <option value={1}>Every 1 min</option>
+                    <option value={5}>Every 5 min</option>
+                    <option value={10}>Every 10 min</option>
+                    <option value={15}>Every 15 min</option>
+                    <option value={30}>Every 30 min</option>
+                    <option value={60}>Every hour</option>
+                  </select>
+                </div>
+              </div>
+              {autoScanInterval > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--p-accent)', marginTop: 8 }}>
+                  Projects will be rescanned every {autoScanInterval === 60 ? 'hour' : `${autoScanInterval} min`}.
+                </div>
+              )}
+
+              <div style={{ marginTop: 20, fontSize: 11, color: 'var(--p-text-muted)', marginBottom: 8 }}>
+                Notifications
+              </div>
+              <div className="settings-list">
+                <div className="settings-link-row">
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={notificationsEnabled}
+                      onChange={handleToggleNotifications}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <div style={{ flex: 1 }}>
+                    <span className="settings-link-label">Desktop Notifications</span>
+                    <div style={{ fontSize: 10, color: 'var(--p-text-muted)', marginTop: 2 }}>
+                      Get notified when scans complete or new projects are found.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {'Notification' in window && Notification.permission === 'denied' && (
+                <div style={{ fontSize: 11, color: 'var(--p-danger)', marginTop: 6 }}>
+                  Notifications are blocked. Enable them in your browser settings.
+                </div>
+              )}
             </div>
           )}
 

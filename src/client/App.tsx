@@ -12,9 +12,12 @@ import { DependencyGraph } from './components/DependencyGraph';
 import { CrossSearch } from './components/CrossSearch';
 import { BatchActionBar } from './components/BatchActionBar';
 import { DockerManager } from './components/DockerManager';
+import { EnvSyncChecker } from './components/EnvSyncChecker';
+import { InsightsView } from './components/InsightsView';
 import { useProjects, useScan, useProjectActions } from './hooks/useProjects';
 import { usePortStatusBatch } from './hooks/usePortStatus';
 import { useToast } from './components/Toast';
+import { useNotifications } from './hooks/useNotifications';
 import { IconGrid, IconList, IconSettings, IconFolder } from './components/Icons';
 import {
   PROJECT_TYPE_LABELS,
@@ -23,7 +26,7 @@ import {
 import type { Project, ProjectFilters, ProjectStatus, ProjectType } from './types/project';
 
 export type ViewMode = 'grid' | 'list';
-export type AppView = 'projects' | 'ports' | 'docker' | 'graph' | 'search';
+export type AppView = 'projects' | 'ports' | 'docker' | 'graph' | 'search' | 'env' | 'insights';
 
 const CMD_SHORTCUT = navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K';
 
@@ -57,6 +60,7 @@ export function App() {
   const { data: projects = [], isLoading } = useProjects(filters);
   const scan = useScan();
   const { toast } = useToast();
+  const { notify } = useNotifications();
   const prevScanning = useRef(false);
   const actions = useProjectActions();
 
@@ -71,15 +75,22 @@ export function App() {
     return result;
   }, [showDirtyOnly, techStackFilter, projects]);
 
-  // Track scan completion for toast
+  // Track scan completion for toast + desktop notification
   useEffect(() => {
     if (prevScanning.current && !scan.isPending) {
       setScanDone(true);
       toast('Scan complete', 'success');
+      const result = scan.data as { count?: number; duration?: number } | undefined;
+      if (result?.count != null) {
+        notify('DevDock Scan Complete', {
+          body: `Found ${result.count} projects in ${((result.duration || 0) / 1000).toFixed(1)}s`,
+          tag: 'scan-complete',
+        });
+      }
       setTimeout(() => setScanDone(false), 2500);
     }
     prevScanning.current = scan.isPending;
-  }, [scan.isPending, toast]);
+  }, [scan.isPending, scan.data, toast, notify]);
 
   // Reset focus on view/filter changes
   useEffect(() => { setFocusedIndex(-1); }, [appView, filters, showDirtyOnly]);
@@ -128,13 +139,21 @@ export function App() {
       switch (e.key) {
         case 'ArrowRight':
         case 'ArrowDown':
+        case 'j':
           e.preventDefault();
           setFocusedIndex((i) => Math.min(i + 1, maxIdx));
           break;
         case 'ArrowLeft':
         case 'ArrowUp':
+        case 'k':
           e.preventDefault();
           setFocusedIndex((i) => Math.max(i - 1, 0));
+          break;
+        case 'Escape':
+          if (focusedIndex >= 0) {
+            e.preventDefault();
+            setFocusedIndex(-1);
+          }
           break;
         case 'Enter':
           if (focusedIndex >= 0 && focusedIndex <= maxIdx) {
@@ -427,6 +446,12 @@ export function App() {
 
         {appView === 'search' && (
           <CrossSearch onSelectProjectById={selectProjectById} />
+        )}
+        {appView === 'env' && (
+          <EnvSyncChecker onSelectProjectById={selectProjectById} />
+        )}
+        {appView === 'insights' && (
+          <InsightsView />
         )}
       </div>
 

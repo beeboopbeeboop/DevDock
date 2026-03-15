@@ -14,7 +14,9 @@ import { configApi } from './api/configApi.js';
 import { envApi } from './api/envManager.js';
 import { secretsApi } from './api/secretsScanner.js';
 import { dockerApi } from './api/docker.js';
+import { insightsApi } from './api/insights.js';
 import { runScan } from './scanner/discover.js';
+import { setupAutoScan } from './api/scan.js';
 import { cleanup } from './processManager.js';
 import { getUserConfig, getConfigPath } from './userConfig.js';
 
@@ -55,6 +57,7 @@ app.route('/api/config', configApi);
 app.route('/api/env', envApi);
 app.route('/api/secrets', secretsApi);
 app.route('/api/docker', dockerApi);
+app.route('/api/insights', insightsApi);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', name: 'DevDock', version: '0.1.0' });
@@ -66,9 +69,10 @@ app.use('/*', serveStatic({ root: './dist' }));
 // Init
 getDb();
 
-// Auto-scan on startup
+// Auto-scan on startup, then start interval if configured
 runScan().then((count) => {
   console.log(`  Scanned ${count} projects`);
+  setupAutoScan();
 });
 
 const uc = getUserConfig();

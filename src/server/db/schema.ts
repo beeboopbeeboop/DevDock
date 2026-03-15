@@ -57,7 +57,27 @@ export function getDb(): Database {
     );
   `);
 
+  // Snapshots table for insights/analytics
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+      total_projects INTEGER NOT NULL DEFAULT 0,
+      dirty_repos INTEGER NOT NULL DEFAULT 0,
+      total_dirty_files INTEGER NOT NULL DEFAULT 0,
+      total_dependencies INTEGER NOT NULL DEFAULT 0,
+      type_breakdown TEXT NOT NULL DEFAULT '{}',
+      status_breakdown TEXT NOT NULL DEFAULT '{}'
+    );
+  `);
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_snapshots_time ON snapshots(captured_at)`);
+  } catch { /* already exists */ }
+
   // Migrations — add columns if missing
+  try {
+    db.exec(`ALTER TABLE projects ADD COLUMN git_dirty_count INTEGER NOT NULL DEFAULT 0`);
+  } catch { /* column already exists */ }
   try {
     db.exec(`ALTER TABLE user_overrides ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0`);
   } catch { /* column already exists */ }
