@@ -1,36 +1,52 @@
 # DevDock
 
-A local-first command center for developers who juggle multiple projects. Monitor ports, manage dev servers, track dependencies, and deploy — all from one dashboard.
-
-<!-- screenshot placeholder: replace with actual screenshot -->
-<!-- ![DevDock Screenshot](screenshot.png) -->
+A local dev control plane for developers who juggle multiple projects. One command vocabulary across every project — type-aware, fuzzy-matched, and audited.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-purple.svg)](#prerequisites)
 [![Runtime: Bun](https://img.shields.io/badge/runtime-Bun-orange.svg)](https://bun.sh)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-green.svg)](#contributing)
 
-DevDock auto-discovers your projects, watches their ports, tracks Git status, connects to GitHub, and gives you one-click access to editors, terminals, deploy pipelines, and more. It runs entirely on your machine — no accounts, no cloud, no telemetry.
+DevDock auto-discovers your projects, understands their types, and gives you a universal command vocabulary that adapts per project. No prefixes, no flags, no configuration. Just plain words.
 
-## Features
+```bash
+reset site           # kills port, clears .next, restarts Next.js
+reset proteus        # kills port, clears Vite cache, restarts Vite
+start ff             # starts FrameFlow (fuzzy match)
+stop all             # stops every running dev server
+status               # shows what's running (from any project dir)
+```
 
-**Project Discovery** — Point DevDock at your project directories. It scans for `package.json`, `tsconfig`, `manifest.xml`, and more to auto-detect project type, tech stack, dev commands, and ports.
+No `dd` prefix required. No `npm run dev`. No `cd` into project folders. No remembering ports or cache directories. DevDock knows your projects and does the right thing.
 
-**Port Monitor** — See every listening TCP port on your machine, mapped to the project that owns it. Spot conflicts instantly. Kill rogue processes with one click.
+It runs entirely on your machine — no accounts, no cloud, no telemetry.
 
-**Cross-Project Search** — Search file contents across all projects simultaneously. Filter by file type. Jump straight from result to your editor at the exact line.
+## Why
 
-**Dependency Graph** — Visualize how your projects connect through shared libraries and common dependencies. Track sync status for monorepo-style shared code.
+```bash
+# Before: 8 shell functions, all slightly different, all manually maintained
+reset-site-jh()   { cd ~/Documents/website-2026-react; kill port 3100; rm -rf .next; npm run dev; }
+reset-proteus()   { cd ~/Documents/Proteus; kill port 4707; rm -rf node_modules/.vite dist; npm run dev; }
+reset-devdock()   { cd ~/Documents/DevDock; kill port 3070; rm -rf node_modules/.vite; bun run build && bun run start; }
+# ...repeat for every new project
 
-**Deploy Integration** — Trigger deployments to Vercel, Cloudflare, Netlify, Railway, or Fly.io. View deployment history, status, and preview URLs without leaving DevDock.
+# After: one word, every project, forever
+reset site
+reset proteus
+reset devdock
+```
 
-**Docker Dashboard** — List containers, check state, view logs, start and stop services. Compose project detection maps containers back to your projects.
+## How It Works
 
-**Git Operations** — Stage, commit, push, pull, and view diffs per project. See branch info, dirty status, and full commit history with inline stats.
-
-**Localhost Preview** — Embedded browser preview with split terminal view. Start dev servers, watch logs, and preview your app side-by-side in one panel.
-
-Plus: GitHub PR & Actions tracking, secrets scanning, `.env` management, outdated dependency audits, project notes, batch operations, drag-to-reorder, keyboard-driven navigation, and a full CLI.
+- **No prefix needed.** Bare verbs in your terminal: `reset`, `start`, `stop`, `status`, `logs`, `pull`, `push`, `commit`, `deploy`. No `dd` or `devdock` required for daily use.
+- **Fuzzy matching.** Don't type the full name. `site` matches `website-2026-react`. `p` matches `proteus`. `ff` matches `frameflow`.
+- **Aliases.** Set shortcuts once: `aka site website-2026-react`. Now `reset site` works forever.
+- **Type-aware.** `reset` clears `.next` for Next.js, `node_modules/.vite` for Vite, `.build` for Swift, `.wrangler` for Cloudflare Workers. You never think about it.
+- **Order doesn't matter.** `reset site` and `site reset` both work. Type it however your brain says it.
+- **Typo correction.** `resst site` → "Did you mean: **reset** site?" Auto-corrects on Enter.
+- **CWD-aware.** If you're inside a project folder, just type `status` — no target needed.
+- **Works everywhere.** Same verbs work in terminal, in the dashboard's Cmd+K palette, and via API.
+- **Always on.** Runs as a background service. Open a terminal, it's there. No startup command.
 
 ## Quick Start
 
@@ -39,144 +55,226 @@ Plus: GitHub PR & Actions tracking, secrets scanning, `.env` management, outdate
 - [Bun](https://bun.sh) v1.0 or later
 - macOS (uses `lsof` and `osascript` for system integration)
 
-### Install & Run
+### Install
 
 ```bash
-# Clone the repo
 git clone https://github.com/beeboopbeeboop/DevDock.git
 cd DevDock
-
-# Install dependencies
 bun install
-
-# Start the dev server (client + API)
-bun run dev
-
-# Open in your browser
-open http://localhost:5173
+bun run setup
 ```
 
-### Production Build
+That's it. `bun run setup` handles everything:
 
-```bash
-bun run build    # Build frontend
-bun run start    # Start production server on :3070
-```
+- Installs the `devdock` CLI globally
+- Starts the background server (auto-starts on login)
+- Adds shell integration to your `.zshrc`
+- Scans your project directories
+- Migrates any existing `reset-*` shell functions into aliases
+- Builds the menu bar app
 
-### First-Time Setup
+Open a new terminal tab and start using it immediately.
 
-On first launch, DevDock creates a config file at `~/.config/devdock/config.json`. Add your project directories:
+### Configuration
+
+DevDock creates a config at `~/.devdock/config.json`. Add your project directories:
 
 ```json
 {
-  "scanPaths": [
-    "~/Documents",
-    "~/Code",
-    "~/Projects"
-  ],
+  "scanPaths": ["~/Documents", "~/Code", "~/Projects"],
   "port": 3070
 }
 ```
 
-Then hit **Rescan** in the sidebar (or run `devdock scan`) to discover projects.
+Hit **Rescan** in the sidebar or run `devdock scan` to discover projects.
+
+## Verbs
+
+| Verb | What it does |
+|------|-------------|
+| `reset <project>` | Kill port, clear cache, restart (adapts to project type) |
+| `start <project>` | Start dev server |
+| `stop <project\|all>` | Stop dev server |
+| `status [project]` | What's running (CWD-aware) |
+| `logs <project>` | Dev server output |
+| `pull <project>` | Git pull |
+| `push <project>` | Git push |
+| `commit <project> -m "msg"` | Git add + commit |
+| `deploy <project>` | Trigger deployment |
+
+All verbs work without any prefix. Fuzzy matching means you never type full project names.
+
+### Aliases
+
+Set them once, use them forever:
+
+```bash
+aka site website-2026-react
+aka cor comp-o-rama
+aka p proteus
+aka --list               # see all aliases
+aka --remove site        # remove one
+```
+
+`dd` is only needed for less-common config commands like `dd log` or `dd config`.
+
+### CWD Detection
+
+If you're inside a project directory, skip the target:
+
+```bash
+cd ~/Documents/Proteus
+status    # shows Proteus status
+reset     # resets Proteus
+```
+
+### Reset Recipes by Type
+
+| Project Type | Reset Behavior |
+|-------------|---------------|
+| Next.js | Kill port, clear `.next`, restart |
+| Vite + React | Kill port, clear `node_modules/.vite` + `dist`, restart |
+| Framer Plugin | Kill port, clear `node_modules/.vite` + `dist`, restart |
+| Hono Server | Kill port, clear `node_modules/.vite`, restart |
+| Cloudflare Worker | Kill port, clear `.wrangler`, restart |
+| Static Site | Kill port, clear `dist` + `.cache`, restart |
+| Swift App | Clear `.build`, run `swift build` |
+| CEP Plugin | No-op (restart manually in After Effects) |
+
+## Command Audit Log
+
+Every verb execution is logged:
+
+```bash
+dd log                    # Recent commands
+dd log --verb reset       # Filter by verb
+dd log --limit 50         # More history
+```
+
+## Features
+
+### Dashboard
+
+A full web UI at `localhost:3070` with:
+
+- **Project Grid** — All your projects with type badges, Git status, port indicators, and one-click actions
+- **Port Monitor** — Every listening TCP port mapped to its project. Kill rogue processes instantly
+- **Cross-Project Search** — Search file contents across all projects simultaneously
+- **Dependency Graph** — Visualize how projects connect through shared libraries
+- **Docker Dashboard** — Container management with compose detection
+- **Git Operations** — Stage, commit, push, pull, branch switch per project
+- **Localhost Preview** — Embedded browser preview with split terminal view
+- **GitHub Integration** — PR tracking, Actions workflow status, issue monitoring
+- **Secrets Scanner** — Detect hardcoded API keys, tokens, and credentials
+- **Environment Manager** — Compare `.env` files across projects, audit for missing vars
+- **Insights** — Analytics on project activity over time
+
+### Menu Bar App
+
+A native macOS menu bar companion (Swift):
+
+- Shows running dev servers with status
+- Stop/restart servers without opening the dashboard
+- Launch startup profiles from the menu bar
+- Crash notifications via macOS notification center
+- Auto-launches with DevDock
+
+### Startup Profiles
+
+Group projects to launch together:
+
+```bash
+dd profile create "morning" --projects site,proteus,jig
+dd profile start morning     # Launches all three
+dd profile stop morning      # Stops all three
+```
+
+Also accessible via Cmd+K in the dashboard.
+
+### Process Management
+
+- **Crash Detection** — DevDock monitors managed processes and detects unexpected exits
+- **Auto-Restart** — Optional per-project auto-restart with exponential backoff (1s → 2s → 4s → 30s max)
+- **Restart Budget** — Max 3 restarts in 5 minutes before giving up
+- **Custom Dev Commands** — Override auto-detected start commands per project
+
+### Command Palette (Cmd+K)
+
+Fuzzy search across projects, actions, git operations, profiles, and navigation. Multi-level drill-in for project-specific actions.
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+K` | Command palette |
+| `Cmd+1`-`5` | Switch views |
+| `Cmd+B` | Batch selection mode |
+| `E` / `T` / `F` | Open in editor / terminal / Finder |
+| `↑↓` / `Enter` / `Esc` | Navigate / select / close |
+
+## CLI Reference
+
+```bash
+# Smart verbs (via shell integration)
+reset <project>                          # Type-aware reset
+start <project>                          # Start dev server
+stop <project|all>                       # Stop dev server(s)
+status [project]                         # Server status (CWD-aware)
+logs <project>                           # Dev server output
+pull/push <project>                      # Git operations
+commit <project> -m "msg"               # Git add + commit
+
+# Project management
+devdock projects [--type X] [--dirty]    # List projects
+devdock scan                             # Rescan directories
+dd aka <alias> <project>                 # Set alias
+dd aka --list                            # Show aliases
+dd log [--verb X] [--limit N]           # Audit log
+
+# Direct commands
+devdock dev start|stop|status|logs <id>  # Dev server management
+devdock git status|commit|push|pull <id> # Git operations
+devdock ports [kill <port>]              # Port management
+devdock deploy trigger|status <id>       # Deployments
+devdock env [list|read|set|compare] <id> # Environment files
+devdock secrets [<id>|audit]             # Security scanning
+devdock config [set <key> <value>]       # Configuration
+devdock open <id> [--cursor]             # Open in editor
+devdock health                           # Server health
+```
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
-│  Frontend   │ ──▶ │    API      │ ──▶ │  Database   │ ──▶ │     System       │
-│ React 19    │     │ Hono on Bun │     │   SQLite    │     │ Git · Docker ·   │
-│ + Vite 8    │     │             │     │             │     │ lsof             │
-└─────────────┘     └─────────────┘     └─────────────┘     └──────────────────┘
+                          ┌─────────────────┐
+                          │   Menu Bar App   │ (Swift, polls API)
+                          │   macOS native   │
+                          └────────┬────────┘
+                                   │
+┌─────────────┐  ┌─────────────┐  │  ┌─────────────┐
+│  Dashboard  │  │    CLI      │  │  │  Verb API   │
+│  React 19   │──│  Bun CLI    │──┼──│  /api/verbs │
+│  + Vite 8   │  │  + shell    │  │  │  /do        │
+└──────┬──────┘  └──────┬──────┘  │  └──────┬──────┘
+       │                │         │         │
+       └────────────────┴─────────┴─────────┘
+                        │
+              ┌─────────┴─────────┐
+              │    Hono on Bun    │
+              │    API Server     │
+              ├───────────────────┤
+              │  Verb Engine      │ ← Type-aware recipes
+              │  Process Manager  │ ← Crash recovery
+              │  Project Scanner  │ ← Auto-discovery
+              │  Security Layer   │ ← Command validation
+              ├───────────────────┤
+              │     SQLite        │
+              └───────────────────┘
 ```
-
-- **Frontend:** React 19 with TanStack Query for data fetching, Tailwind CSS v4 for styling, TypeScript in strict mode
-- **Backend:** Hono HTTP framework running on Bun with SQLite for project metadata and user preferences
-- **System layer:** Spawns Git, Docker, lsof, and deploy CLIs as child processes. Terminal output streamed via SSE
-- **No external services:** Everything runs locally. No database servers, no cloud accounts, no API keys required
-
-## CLI
-
-DevDock includes a full command-line interface for scripting and terminal workflows.
-
-```bash
-# List all projects
-devdock projects
-
-# Filter by type or status
-devdock projects --type vite-react --status active
-
-# Show only dirty repos
-devdock projects --dirty
-
-# Port management
-devdock ports                 # List all listening ports
-devdock ports kill 3000       # Kill process on port 3000
-
-# Git operations
-devdock git status my-app
-devdock git commit my-app -m "fix: resolve auth bug"
-devdock git push my-app
-
-# Dev server
-devdock dev start my-app      # Launch dev command
-devdock dev logs my-app       # Stream terminal output
-
-# Deploy
-devdock deploy trigger my-app --prod
-
-# Environment management
-devdock env list my-app       # List .env files
-devdock env compare my-app    # Diff .env vs .env.example
-
-# Security
-devdock secrets audit         # Scan all projects for hardcoded secrets
-
-# Health check
-devdock health
-```
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+K` | Command palette — search projects, run actions |
-| `Cmd+1`–`5` | Switch views: Projects, Ports, Docker, Graph, Search |
-| `Cmd+B` | Toggle batch selection mode |
-| `↑` `↓` | Navigate project list |
-| `Enter` | Open selected project |
-| `E` | Open in editor (VS Code) |
-| `T` | Open terminal at project |
-| `F` | Reveal in Finder |
-| `/` | Focus search |
-| `Esc` | Close panel / clear selection |
-
-## Project Detail Panel
-
-Click any project to open a slide-out panel with nine tabs:
-
-- **Overview** — Tech stack badges, status, quick-launch buttons for VS Code, terminal, Finder, and dev server
-- **Files** — Full directory tree with file type breakdown and size stats
-- **Git** — Staging area, commit with message, push/pull, branch switching, commit history with insertion/deletion counts
-- **GitHub** — Recent commits, open PRs, Actions workflow runs with pass/fail status, issue tracking
-- **Deploy** — Trigger preview or production deploys, view deployment history with URLs and timestamps
-- **Deps** — Outdated package audit showing current vs. latest version, severity breakdown (major/minor/patch)
-- **Docker** — Project-specific containers, compose services, start/stop controls
-- **Localhost** — Embedded preview iframe with split terminal, start/stop dev server, edit port
-- **Notes** — Free-form per-project notes with auto-save
-
-## Security
-
-- **Runs locally only** — The server binds to `localhost`. Nothing is exposed to the network
-- **No telemetry** — No data leaves your machine. No analytics, no tracking, no phone-home
-- **Path validation** — All file operations resolve symlinks and reject path traversal attempts
-- **Secrets scanner** — Built-in detection for 20+ patterns: AWS keys, Stripe tokens, database URLs, private keys, and more
-- **`.env` masking** — Environment variable values are masked by default. Explicit `--reveal` flag required to view
 
 ## Configuration
 
 ```json
-// ~/.config/devdock/config.json
 {
   "scanPaths": ["~/Documents", "~/Code"],
   "sharedLibraries": [
@@ -192,52 +290,36 @@ Click any project to open a slide-out panel with nine tabs:
 }
 ```
 
-| Key | Description |
-|-----|-------------|
-| `scanPaths` | Directories to scan for projects (supports `~`) |
-| `sharedLibraries` | Monorepo-style shared code to track in the dependency graph |
-| `projectSignals` | Files that indicate a directory is a project root |
-| `ignorePatterns` | Directory names to skip during scanning |
-| `port` | Port for the DevDock API server (default: 3070) |
+## Security
 
-## Integrations
-
-DevDock detects and uses these tools when available. None are required — features gracefully degrade when a tool is missing.
-
-| Tool | Used For |
-|------|----------|
-| `gh` | GitHub PRs, Actions, issues, repo metadata |
-| `vercel` | Vercel deployments and project linking |
-| `wrangler` | Cloudflare Workers / Pages deployments |
-| `netlify` | Netlify site deployments |
-| `railway` | Railway service deployments |
-| `flyctl` | Fly.io application deployments |
-| `docker` | Container management and compose orchestration |
-| `code` / `cursor` | Open projects in VS Code or Cursor |
+- **Runs locally only** — Server binds to `localhost`. Nothing exposed to the network
+- **No telemetry** — No data leaves your machine
+- **Command allowlist** — Dev commands validated against safe prefix list (npm, bun, node, cargo, swift, etc.)
+- **Path validation** — All file operations reject path traversal attempts
+- **Secrets scanning** — 20+ patterns for AWS keys, Stripe tokens, database URLs, private keys
+- **`.env` masking** — Values masked by default, explicit `--reveal` required
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Runtime | Bun |
-| Frontend | React 19, TypeScript 5.9, Vite 8 |
-| Styling | Tailwind CSS v4 + custom design tokens |
-| Data Fetching | TanStack React Query v5 |
-| API Framework | Hono |
-| Database | SQLite (via Bun's native driver) |
-| Process Management | Bun.spawn with stdout/stderr streaming |
+| Frontend | React 19, TypeScript, Vite 8, Tailwind CSS v4, TanStack Query |
+| Backend | Hono, SQLite (Bun native driver) |
+| Menu Bar | Swift, SwiftUI, MenuBarExtra |
+| Process Mgmt | Bun.spawn with SSE streaming, crash recovery |
 
 ## Contributing
 
-Contributions are welcome. To get started:
+Contributions welcome. To get started:
 
 1. Fork the repo
 2. Create a feature branch: `git checkout -b feat/my-feature`
 3. Make your changes
 4. Push and open a PR
 
-Please keep PRs focused on a single change. If you're adding a new view or major feature, open an issue first to discuss the approach.
+Please keep PRs focused. For new views or major features, open an issue first.
 
 ## License
 
-[MIT](LICENSE) © Jon Hanlan
+[MIT](LICENSE)

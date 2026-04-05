@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { Project } from '../types/project';
 import { usePortStatus, usePortInfo } from '../hooks/usePortStatus';
-import { useProjectActions } from '../hooks/useProjects';
+import { useProjectActions, useUpdateOverride } from '../hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTerminal, useTerminalStatus } from '../hooks/useTerminal';
 import { TerminalView } from './TerminalView';
@@ -18,12 +18,15 @@ interface LocalhostManagerProps {
 export function LocalhostManager({ project }: LocalhostManagerProps) {
   const [editingPort, setEditingPort] = useState(false);
   const [portValue, setPortValue] = useState(String(project.devPort || ''));
+  const [editingCommand, setEditingCommand] = useState(false);
+  const [commandValue, setCommandValue] = useState(project.devCommand || '');
   const [iframeKey, setIframeKey] = useState(0);
   const [viewTab, setViewTab] = useState<ViewTab>('preview');
   const [splitRatio, setSplitRatio] = useState(40); // preview %
   const dividerRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
+  const updateOverride = useUpdateOverride();
   const port = project.devPort;
   const { data: status, isLoading: statusLoading } = usePortStatus(port);
   const { data: portInfo } = usePortInfo(port && status?.running ? port : null);
@@ -229,6 +232,34 @@ export function LocalhostManager({ project }: LocalhostManagerProps) {
             </>
           )}
         </div>
+
+        {/* Auto-restart toggle */}
+        {(isRunning || termStatus.running) && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+            <div>
+              <span style={{ fontSize: 12, fontWeight: 500 }}>Auto-restart on crash</span>
+              {termStatus.restartCount > 0 && (
+                <span style={{ fontSize: 10, color: 'var(--p-warning)', marginLeft: 8 }}>
+                  Restarted {termStatus.restartCount}x
+                </span>
+              )}
+            </div>
+            <label className="p-toggle">
+              <input
+                type="checkbox"
+                checked={termStatus.autoRestart ?? false}
+                onChange={(e) => {
+                  fetch(`/api/actions/auto-restart/${project.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: e.target.checked }),
+                  });
+                }}
+              />
+              <span />
+            </label>
+          </div>
+        )}
       </div>
 
       {/* View mode tabs */}
@@ -314,22 +345,89 @@ export function LocalhostManager({ project }: LocalhostManagerProps) {
         </div>
       )}
 
-      {/* Dev Command Reference */}
-      {project.devCommand && (
-        <div className="detail-section">
-          <div className="detail-section-title">Dev Command</div>
+      {/* Dev Command */}
+      <div className="detail-section">
+        <div className="detail-section-title">Dev Command</div>
+        {editingCommand ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <input
+              type="text"
+              className="p-input"
+              style={{ fontSize: 12, fontFamily: 'var(--p-font-mono)', padding: '6px 8px' }}
+              value={commandValue}
+              onChange={(e) => setCommandValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const val = commandValue.trim();
+                  updateOverride.mutate(
+                    { projectId: project.id, overrides: { customDevCommand: val || null } },
+                    { onSuccess: () => { toast('Dev command updated', 'success'); setEditingCommand(false); } }
+                  );
+                }
+                if (e.key === 'Escape') setEditingCommand(false);
+              }}
+              autoFocus
+              placeholder="e.g. bun run dev"
+            />
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="p-btn p-btn-accent p-btn-sm" onClick={() => {
+                const val = commandValue.trim();
+                updateOverride.mutate(
+                  { projectId: project.id, overrides: { customDevCommand: val || null } },
+                  { onSuccess: () => { toast('Dev command updated', 'success'); setEditingCommand(false); } }
+                );
+              }}>Save</button>
+              <button className="p-btn p-btn-ghost p-btn-sm" onClick={() => setEditingCommand(false)}>Cancel</button>
+              {project.devCommand !== project.detectedDevCommand && (
+                <button className="p-btn p-btn-ghost p-btn-sm" style={{ marginLeft: 'auto', color: 'var(--p-text-muted)' }} onClick={() => {
+                  updateOverride.mutate(
+                    { projectId: project.id, overrides: { customDevCommand: null } },
+                    { onSuccess: () => { toast('Reset to detected command', 'success'); setEditingCommand(false); } }
+                  );
+                }}>Reset</button>
+              )}
+            </div>
+            {project.detectedDevCommand && project.devCommand !== project.detectedDevCommand && (
+              <span style={{ fontSize: 10, color: 'var(--p-text-muted)', fontFamily: 'var(--p-font-mono)' }}>
+                Detected: {project.detectedDevCommand}
+              </span>
+            )}
+          </div>
+        ) : project.devCommand ? (
           <div className="lh-command-block">
             <code>{project.devCommand}</code>
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+              <button
+                className="p-btn p-btn-ghost p-btn-sm"
+                onClick={() => { navigator.clipboard.writeText(project.devCommand!); toast('Command copied', 'success'); }}
+              >
+                Copy
+              </button>
+              <button
+                className="p-btn p-btn-ghost p-btn-sm"
+                onClick={() => { setCommandValue(project.devCommand || ''); setEditingCommand(true); }}
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--p-text-muted)' }}>No command detected</span>
             <button
               className="p-btn p-btn-ghost p-btn-sm"
-              onClick={() => { navigator.clipboard.writeText(project.devCommand!); toast('Command copied', 'success'); }}
-              style={{ flexShrink: 0 }}
+              onClick={() => { setCommandValue(''); setEditingCommand(true); }}
             >
-              Copy
+              Set manually
             </button>
           </div>
-        </div>
-      )}
+        )}
+        {!editingCommand && project.detectedDevCommand && project.devCommand !== project.detectedDevCommand && (
+          <span style={{ fontSize: 10, color: 'var(--p-text-muted)', fontFamily: 'var(--p-font-mono)', marginTop: 4, display: 'block' }}>
+            Detected: {project.detectedDevCommand}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

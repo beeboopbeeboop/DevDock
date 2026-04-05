@@ -15,6 +15,9 @@ import { envApi } from './api/envManager.js';
 import { secretsApi } from './api/secretsScanner.js';
 import { dockerApi } from './api/docker.js';
 import { insightsApi } from './api/insights.js';
+import { presetsApi } from './api/presets.js';
+import { profilesApi } from './api/profiles.js';
+import { verbApi } from './api/verbApi.js';
 import { runScan } from './scanner/discover.js';
 import { setupAutoScan } from './api/scan.js';
 import { cleanup } from './processManager.js';
@@ -58,6 +61,9 @@ app.route('/api/env', envApi);
 app.route('/api/secrets', secretsApi);
 app.route('/api/docker', dockerApi);
 app.route('/api/insights', insightsApi);
+app.route('/api/presets', presetsApi);
+app.route('/api/profiles', profilesApi);
+app.route('/api/verbs', verbApi);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', name: 'DevDock', version: '0.1.0' });

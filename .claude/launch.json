@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--watch", "src/server/index.ts"],
+      "port": 3070
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite"],
+      "port": 5174
+    }
+  ]
+}

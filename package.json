@@ -7,12 +7,16 @@
     "devdock": "./src/cli.ts"
   },
   "scripts": {
-    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\" \"bun run menubar\"",
     "dev:server": "bun run --watch src/server/index.ts",
     "dev:client": "vite",
     "build": "vite build",
-    "start": "bun run src/server/index.ts",
-    "cli": "bun run src/cli.ts"
+    "start": "concurrently \"bun run src/server/index.ts\" \"bun run menubar\"",
+    "start:server": "bun run src/server/index.ts",
+    "menubar": "sleep 2 && open ./menubar/DevDock\\ MenuBar.app",
+    "menubar:build": "cd menubar && ./build-app.sh",
+    "cli": "bun run src/cli.ts",
+    "setup": "bun run src/setup.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",

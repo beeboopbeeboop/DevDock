@@ -1,9 +1,9 @@
 import {
   STATUS_COLORS,
 } from '../types/project';
-import type { Project, ProjectStatus } from '../types/project';
+import type { Project, ProjectStatus, FilterPreset } from '../types/project';
 import type { AppView } from '../App';
-import { IconRefresh, IconGitHub, IconExternalLink, IconGitCommit, IconSearch, IconDocker, IconShield, IconChart } from './Icons';
+import { IconRefresh, IconGitHub, IconExternalLink, IconGitCommit, IconSearch, IconDocker, IconShield, IconChart, IconArchive } from './Icons';
 import { AnimatedNumber } from './AnimatedNumber';
 
 interface RunningServer {
@@ -27,6 +27,12 @@ interface SidebarProps {
   appView?: AppView;
   onChangeView?: (view: AppView) => void;
   onFilterDirty?: () => void;
+  tagCounts?: Record<string, number>;
+  activeTag?: string;
+  onFilterTag?: (tag?: string) => void;
+  presets?: FilterPreset[];
+  onApplyPreset?: (preset: FilterPreset) => void;
+  onDeletePreset?: (id: string) => void;
 }
 
 const ALL_STATUSES: ProjectStatus[] = ['active', 'maintenance', 'paused', 'archived', 'idea'];
@@ -55,6 +61,12 @@ export function Sidebar({
   appView = 'projects',
   onChangeView,
   onFilterDirty,
+  tagCounts = {},
+  activeTag,
+  onFilterTag,
+  presets = [],
+  onApplyPreset,
+  onDeletePreset,
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -152,6 +164,20 @@ export function Sidebar({
             <IconSearch size={13} />
             Search
           </button>
+          <button
+            className="sidebar-item"
+            data-active={appView === 'archive' ? 'true' : undefined}
+            onClick={() => onChangeView?.('archive')}
+            style={appView === 'archive' ? undefined : { color: 'var(--p-text-muted)' }}
+          >
+            <IconArchive size={13} />
+            Archive
+            {(statusCounts['archived'] || 0) > 0 && (
+              <span className="sidebar-item-count">
+                <AnimatedNumber value={statusCounts['archived'] || 0} />
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Filters */}
@@ -199,6 +225,63 @@ export function Sidebar({
             </button>
           )}
         </div>
+
+        {/* Tags */}
+        {Object.keys(tagCounts).length > 0 && (
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Tags</div>
+            {Object.entries(tagCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 10)
+              .map(([tag, count]) => (
+                <button
+                  key={tag}
+                  className="sidebar-item"
+                  data-active={activeTag === tag ? 'true' : undefined}
+                  onClick={() => onFilterTag?.(activeTag === tag ? undefined : tag)}
+                >
+                  <span style={{ fontSize: 11 }}>#</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {tag}
+                  </span>
+                  <span className="sidebar-item-count"><AnimatedNumber value={count} /></span>
+                </button>
+              ))}
+            {activeTag && (
+              <button
+                className="sidebar-item"
+                style={{ color: 'var(--p-text-muted)', fontSize: 11 }}
+                onClick={() => onFilterTag?.(undefined)}
+              >
+                Clear tag filter
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Saved Views */}
+        {presets.length > 0 && (
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Saved Views</div>
+            {presets.map((p) => (
+              <button
+                key={p.id}
+                className="sidebar-item"
+                onClick={() => onApplyPreset?.(p)}
+              >
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.name}
+                </span>
+                <span
+                  className="preset-delete-btn"
+                  onClick={(e) => { e.stopPropagation(); onDeletePreset?.(p.id); }}
+                >
+                  &times;
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Recently Modified */}
         {recentProjects.length > 0 && (

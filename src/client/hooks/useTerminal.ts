@@ -54,15 +54,15 @@ export function useTerminal(projectId: string | null) {
 }
 
 export function useTerminalStatus(projectId: string | null) {
-  const [status, setStatus] = useState<{ running: boolean; pid: number | null; startedAt: number | null }>({
-    running: false, pid: null, startedAt: null,
+  const [status, setStatus] = useState<{ running: boolean; pid: number | null; startedAt: number | null; autoRestart: boolean; restartCount: number }>({
+    running: false, pid: null, startedAt: null, autoRestart: false, restartCount: 0,
   });
 
   useEffect(() => {
     if (!projectId) return;
     const check = () => {
       fetch(`/api/actions/terminal-status/${projectId}`)
-        .then((r) => r.ok ? r.json() : { running: false, pid: null, startedAt: null })
+        .then((r) => r.ok ? r.json() : { running: false, pid: null, startedAt: null, autoRestart: false, restartCount: 0 })
         .then(setStatus)
         .catch(() => {});
     };

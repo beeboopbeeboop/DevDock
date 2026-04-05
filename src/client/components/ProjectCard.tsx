@@ -4,8 +4,12 @@ import {
   PROJECT_TYPE_LABELS,
   PROJECT_TYPE_COLORS,
   STATUS_COLORS,
+  PRIORITY_LABELS,
+  PRIORITY_COLORS,
+  priorityToTier,
 } from '../types/project';
-import { useProjectActions, useToggleFavorite } from '../hooks/useProjects';
+import { useProjectActions, useToggleFavorite, useUpdateOverride } from '../hooks/useProjects';
+import { StatusPopover } from './StatusPopover';
 import { useGitHubStatus } from '../hooks/useGitHub';
 import { IconVSCode, IconCursor, IconGitHub, IconFolder, IconTerminal, IconPlay, IconClaude, IconExternalLink, IconStar } from './Icons';
 import { Tooltip } from './Tooltip';
@@ -62,6 +66,7 @@ interface ProjectCardProps {
 export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: ProjectCardProps) {
   const actions = useProjectActions();
   const toggleFav = useToggleFavorite();
+  const updateOverride = useUpdateOverride();
   const { toast } = useToast();
   const { data: ghStatus } = useGitHubStatus(project.githubRepo);
   const [showPeek, setShowPeek] = useState(false);
@@ -114,7 +119,7 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
     { id: 'notes', label: 'Project Notes', icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>, onClick: () => onOpenNotes?.(), condition: !!onOpenNotes },
     { id: '_sep2', label: '', separator: true, onClick: () => {} },
     { id: 'git-pull', label: 'Git Pull', icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>, onClick: () => { fetch('/api/actions/git-pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: project.path }) }).then((r) => r.json()).then((d) => toast(d.ok ? 'Pulled successfully' : 'Pull failed', d.ok ? 'success' : 'error')); }, condition: !!project.hasGit },
-    { id: 'start-dev', label: 'Start Dev Server', icon: <IconPlay size={12} color="var(--p-success)" />, onClick: () => { actions.startDev(project.path, project.devCommand!); toast('Dev server starting...', 'info'); }, condition: !!project.devCommand },
+    { id: 'start-dev', label: 'Start Dev Server', icon: <IconPlay size={12} color="var(--p-success)" />, onClick: () => { actions.startDev(project.path, project.devCommand!, project.id); toast('Dev server starting...', 'info'); }, condition: !!project.devCommand },
     { id: 'npm-install', label: 'npm install', onClick: () => { fetch('/api/actions/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'npm-install', projectIds: [project.id] }) }).then((r) => r.json()).then(() => toast('npm install complete', 'success')).catch(() => toast('npm install failed', 'error')); } },
   ];
 
@@ -203,12 +208,21 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
                 )}
               </>
             )}
-            <Tooltip content={project.status}>
-              <div
-                className="project-status-dot"
-                style={{ background: statusColor }}
-              />
-            </Tooltip>
+            {(() => {
+              const tier = priorityToTier(project.priority);
+              return (
+                <Tooltip content={`Priority: ${PRIORITY_LABELS[tier]}`}>
+                  <span className="priority-tier-badge" style={{ color: PRIORITY_COLORS[tier], borderColor: `${PRIORITY_COLORS[tier]}40` }}>
+                    {PRIORITY_LABELS[tier]}
+                  </span>
+                </Tooltip>
+              );
+            })()}
+            <StatusPopover
+              currentStatus={project.status}
+              onChangeStatus={(s) => updateOverride.mutate({ projectId: project.id, overrides: { customStatus: s } })}
+              triggerStyle="dot"
+            />
           </div>
         </div>
 
@@ -292,7 +306,7 @@ export function ProjectCard({ project, onClick, onOpenNotes, isServerRunning }: 
                   className="card-action-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    actions.startDev(project.path, project.devCommand!);
+                    actions.startDev(project.path, project.devCommand!, project.id);
                   }}
                   style={{ color: 'var(--p-success)' }}
                 >

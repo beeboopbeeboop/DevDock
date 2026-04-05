@@ -32,6 +32,8 @@ interface ProjectRow {
   custom_deploy_url?: string | null;
   notes?: string | null;
   is_favorite?: number | null;
+  custom_dev_command?: string | null;
+  aliases?: string | null;
 }
 
 function rowToProject(row: ProjectRow): Project {
@@ -45,7 +47,8 @@ function rowToProject(row: ProjectRow): Project {
     tags: mergeJson(row.tags, row.custom_tags),
     description: row.description,
     techStack: JSON.parse(row.tech_stack || '[]'),
-    devCommand: row.dev_command,
+    devCommand: row.custom_dev_command || row.dev_command,
+    detectedDevCommand: row.dev_command,
     devPort: row.custom_dev_port ?? row.dev_port,
     hasGit: Boolean(row.has_git),
     gitBranch: row.git_branch,
@@ -59,6 +62,7 @@ function rowToProject(row: ProjectRow): Project {
     lastModified: row.last_modified || '',
     lastScanned: row.last_scanned,
     isFavorite: Boolean(row.is_favorite),
+    aliases: JSON.parse(row.aliases || '[]'),
   };
 }
 
@@ -73,7 +77,7 @@ export function getProjects(filters?: ProjectFilters): Project[] {
   const db = getDb();
   let sql = `
     SELECT p.*, o.custom_name, o.custom_status, o.custom_tags,
-           o.custom_dev_port, o.custom_deploy_url, o.notes, o.is_favorite
+           o.custom_dev_port, o.custom_deploy_url, o.custom_dev_command, o.notes, o.is_favorite, o.aliases
     FROM projects p
     LEFT JOIN user_overrides o ON p.id = o.project_id
     WHERE 1=1
@@ -92,6 +96,11 @@ export function getProjects(filters?: ProjectFilters): Project[] {
   if (filters?.status) {
     sql += ` AND COALESCE(o.custom_status, p.status) = ?`;
     params.push(filters.status);
+  }
+  if (filters?.tag) {
+    sql += ` AND (p.tags LIKE ? OR o.custom_tags LIKE ?)`;
+    const tagTerm = `%${JSON.stringify(filters.tag).slice(1, -1)}%`;
+    params.push(tagTerm, tagTerm);
   }
 
   const sortMap: Record<string, string> = {
@@ -158,22 +167,25 @@ export function updateProjectOverride(projectId: string, overrides: {
   customName?: string;
   customStatus?: string;
   customTags?: string[];
+  customDevCommand?: string | null;
   notes?: string;
 }) {
   const db = getDb();
   db.prepare(`
-    INSERT INTO user_overrides (project_id, custom_name, custom_status, custom_tags, notes)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO user_overrides (project_id, custom_name, custom_status, custom_tags, custom_dev_command, notes)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(project_id) DO UPDATE SET
       custom_name = COALESCE(excluded.custom_name, user_overrides.custom_name),
       custom_status = COALESCE(excluded.custom_status, user_overrides.custom_status),
       custom_tags = COALESCE(excluded.custom_tags, user_overrides.custom_tags),
+      custom_dev_command = CASE WHEN excluded.custom_dev_command = '' THEN NULL ELSE COALESCE(excluded.custom_dev_command, user_overrides.custom_dev_command) END,
       notes = COALESCE(excluded.notes, user_overrides.notes)
   `).run(
     projectId,
     overrides.customName || null,
     overrides.customStatus || null,
     overrides.customTags ? JSON.stringify(overrides.customTags) : null,
+    overrides.customDevCommand === null ? '' : (overrides.customDevCommand || null),
     overrides.notes || null,
   );
 }
@@ -187,6 +199,34 @@ export function updateProjectPriority(projectId: string, priority: number) {
     VALUES (?, ?)
     ON CONFLICT(project_id) DO UPDATE SET sort_order = excluded.sort_order
   `).run(projectId, priority);
+}
+
+// ──────────────────────────────────────
+// Filter Presets
+// ──────────────────────────────────────
+
+export interface FilterPresetRow {
+  id: string;
+  name: string;
+  filters: string;
+  created_at: string;
+}
+
+export function getPresets(): FilterPresetRow[] {
+  const db = getDb();
+  return db.prepare('SELECT * FROM filter_presets ORDER BY created_at DESC').all() as FilterPresetRow[];
+}
+
+export function createPreset(name: string, filters: object): FilterPresetRow {
+  const db = getDb();
+  const id = `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  db.prepare('INSERT INTO filter_presets (id, name, filters) VALUES (?, ?, ?)').run(id, name, JSON.stringify(filters));
+  return { id, name, filters: JSON.stringify(filters), created_at: new Date().toISOString() };
+}
+
+export function deletePreset(id: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM filter_presets WHERE id = ?').run(id);
 }
 
 // ──────────────────────────────────────
@@ -260,4 +300,172 @@ export function getSnapshots(range: '24h' | '7d' | '30d' | '90d' = '7d'): Snapsh
   }
 
   return rows;
+}
+
+// ──────────────────────────────────────
+// Startup Profiles
+// ──────────────────────────────────────
+
+export interface StartupProfileRow {
+  id: string;
+  name: string;
+  project_ids: string;
+  created_at: string;
+}
+
+export function getStartupProfiles(): StartupProfileRow[] {
+  const db = getDb();
+  return db.prepare('SELECT * FROM startup_profiles ORDER BY created_at DESC').all() as StartupProfileRow[];
+}
+
+export function createStartupProfile(name: string, projectIds: string[]): StartupProfileRow {
+  const db = getDb();
+  const id = `profile-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  db.prepare('INSERT INTO startup_profiles (id, name, project_ids) VALUES (?, ?, ?)').run(id, name, JSON.stringify(projectIds));
+  return { id, name, project_ids: JSON.stringify(projectIds), created_at: new Date().toISOString() };
+}
+
+export function updateStartupProfile(id: string, name: string, projectIds: string[]): void {
+  const db = getDb();
+  db.prepare('UPDATE startup_profiles SET name = ?, project_ids = ? WHERE id = ?').run(name, JSON.stringify(projectIds), id);
+}
+
+export function deleteStartupProfile(id: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM startup_profiles WHERE id = ?').run(id);
+}
+
+// ──────────────────────────────────────
+// Aliases (AKA System)
+// ──────────────────────────────────────
+
+export function getProjectAliases(): Map<string, string> {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT project_id, aliases FROM user_overrides WHERE aliases != '[]' AND aliases IS NOT NULL`
+  ).all() as { project_id: string; aliases: string }[];
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    const arr: string[] = JSON.parse(row.aliases);
+    for (const alias of arr) map.set(alias.toLowerCase(), row.project_id);
+  }
+  return map;
+}
+
+export function getAllAliases(): { alias: string; projectId: string; projectName: string }[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT o.project_id, o.aliases, COALESCE(o.custom_name, p.name) as name
+    FROM user_overrides o
+    JOIN projects p ON o.project_id = p.id
+    WHERE o.aliases != '[]' AND o.aliases IS NOT NULL
+  `).all() as { project_id: string; aliases: string; name: string }[];
+  const result: { alias: string; projectId: string; projectName: string }[] = [];
+  for (const row of rows) {
+    const arr: string[] = JSON.parse(row.aliases);
+    for (const alias of arr) {
+      result.push({ alias, projectId: row.project_id, projectName: row.name });
+    }
+  }
+  return result;
+}
+
+export function setProjectAlias(projectId: string, alias: string): { ok: boolean; error?: string } {
+  const db = getDb();
+  const key = alias.toLowerCase();
+  // Check uniqueness across all projects
+  const existing = getProjectAliases();
+  const owner = existing.get(key);
+  if (owner && owner !== projectId) {
+    return { ok: false, error: `Alias "${alias}" already used by project ${owner}` };
+  }
+  // Get current aliases for this project
+  const row = db.prepare('SELECT aliases FROM user_overrides WHERE project_id = ?').get(projectId) as { aliases: string } | undefined;
+  const current: string[] = row ? JSON.parse(row.aliases || '[]') : [];
+  if (!current.includes(alias)) current.push(alias);
+  db.prepare(`
+    INSERT INTO user_overrides (project_id, aliases) VALUES (?, ?)
+    ON CONFLICT(project_id) DO UPDATE SET aliases = excluded.aliases
+  `).run(projectId, JSON.stringify(current));
+  return { ok: true };
+}
+
+export function removeProjectAlias(alias: string): boolean {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT project_id, aliases FROM user_overrides WHERE aliases LIKE ?`
+  ).all(`%${alias}%`) as { project_id: string; aliases: string }[];
+  for (const row of rows) {
+    const arr: string[] = JSON.parse(row.aliases);
+    const filtered = arr.filter(a => a.toLowerCase() !== alias.toLowerCase());
+    if (filtered.length !== arr.length) {
+      db.prepare('UPDATE user_overrides SET aliases = ? WHERE project_id = ?').run(JSON.stringify(filtered), row.project_id);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ──────────────────────────────────────
+// Command Audit Log
+// ──────────────────────────────────────
+
+export function logCommand(entry: {
+  projectId?: string;
+  verb: string;
+  args?: string;
+  source?: string;
+  status?: string;
+  message?: string;
+  durationMs?: number;
+}): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO command_logs (project_id, verb, args, source, status, message, duration_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    entry.projectId || null,
+    entry.verb,
+    entry.args || null,
+    entry.source || 'cli',
+    entry.status || 'ok',
+    entry.message || null,
+    entry.durationMs || null,
+  );
+}
+
+export function getCommandLogs(filters?: {
+  projectId?: string;
+  verb?: string;
+  limit?: number;
+  since?: string;
+}): { id: number; projectId: string | null; projectName: string | null; verb: string; args: string | null; source: string; status: string; message: string | null; durationMs: number | null; createdAt: string }[] {
+  const db = getDb();
+  let sql = `
+    SELECT cl.*, COALESCE(o.custom_name, p.name) as project_name
+    FROM command_logs cl
+    LEFT JOIN projects p ON cl.project_id = p.id
+    LEFT JOIN user_overrides o ON cl.project_id = o.project_id
+    WHERE 1=1
+  `;
+  const params: unknown[] = [];
+  if (filters?.projectId) { sql += ' AND cl.project_id = ?'; params.push(filters.projectId); }
+  if (filters?.verb) { sql += ' AND cl.verb = ?'; params.push(filters.verb); }
+  if (filters?.since) { sql += ' AND cl.created_at >= ?'; params.push(filters.since); }
+  sql += ' ORDER BY cl.created_at DESC LIMIT ?';
+  params.push(filters?.limit || 50);
+
+  const rows = db.prepare(sql).all(...params) as { id: number; project_id: string | null; project_name: string | null; verb: string; args: string | null; source: string; status: string; message: string | null; duration_ms: number | null; created_at: string }[];
+  return rows.map(r => ({
+    id: r.id,
+    projectId: r.project_id,
+    projectName: r.project_name,
+    verb: r.verb,
+    args: r.args,
+    source: r.source,
+    status: r.status,
+    message: r.message,
+    durationMs: r.duration_ms,
+    createdAt: r.created_at,
+  }));
 }

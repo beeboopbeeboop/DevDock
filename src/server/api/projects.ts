@@ -9,6 +9,7 @@ projectsApi.get('/', (c) => {
     search: c.req.query('search') || undefined,
     type: c.req.query('type') as ProjectFilters['type'],
     status: c.req.query('status') as ProjectFilters['status'],
+    tag: c.req.query('tag') || undefined,
     sort: (c.req.query('sort') as ProjectFilters['sort']) || 'priority',
   };
   const projects = getProjects(filters);

@@ -26,6 +26,7 @@ export interface Project {
 
   techStack: string[];
   devCommand: string | null;
+  detectedDevCommand: string | null;
   devPort: number | null;
   hasGit: boolean;
   gitBranch: string | null;
@@ -42,6 +43,7 @@ export interface Project {
   lastModified: string;
   lastScanned: string;
   isFavorite: boolean;
+  aliases: string[];
 }
 
 export interface GitHubInfo {
@@ -61,6 +63,20 @@ export interface ProjectFilters {
   status?: ProjectStatus;
   tag?: string;
   sort?: 'priority' | 'name' | 'lastModified' | 'type' | 'custom';
+}
+
+export interface FilterPreset {
+  id: string;
+  name: string;
+  filters: ProjectFilters & { showDirtyOnly?: boolean; techStack?: string[] };
+  createdAt: string;
+}
+
+export interface StartupProfile {
+  id: string;
+  name: string;
+  projectIds: string[];
+  createdAt: string;
 }
 
 export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
@@ -96,6 +112,41 @@ export const STATUS_COLORS: Record<ProjectStatus, string> = {
   archived: '#4b5563',
   idea: '#818cf8',
 };
+
+// ──────────────────────────────────────
+// Priority Tiers
+// ──────────────────────────────────────
+
+export type PriorityTier = 1 | 2 | 3 | 4;
+
+export const PRIORITY_LABELS: Record<PriorityTier, string> = {
+  1: 'P1',
+  2: 'P2',
+  3: 'P3',
+  4: 'P4',
+};
+
+export const PRIORITY_COLORS: Record<PriorityTier, string> = {
+  1: '#f87171',
+  2: '#fbbf24',
+  3: '#60a5fa',
+  4: '#6b7280',
+};
+
+export const PRIORITY_DESCRIPTIONS: Record<PriorityTier, string> = {
+  1: 'Critical / Shipping',
+  2: 'Active',
+  3: 'Backlog',
+  4: 'Low',
+};
+
+/** Map a raw priority number (from DB) to a display tier 1-4 */
+export function priorityToTier(priority: number): PriorityTier {
+  if (priority <= 1) return 1;
+  if (priority <= 3) return 2;
+  if (priority <= 6) return 3;
+  return 4;
+}
 
 // ──────────────────────────────────────
 // Port Manager types

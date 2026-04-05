@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { readdirSync, statSync } from 'fs';
 import { join, extname, resolve, normalize } from 'path';
-import { startProcess, stopProcess, getBuffer, getStatus, subscribe } from '../processManager';
+import { startProcess, stopProcess, getBuffer, getStatus, subscribe, setAutoRestart, getAllProcesses } from '../processManager';
 import {
   validateProjectPath,
   validateBranchName,
@@ -141,7 +141,7 @@ actionsApi.post('/open-url', async (c) => {
 // ─────────────────────────────────────────────
 
 actionsApi.post('/start-dev', async (c) => {
-  const { path, command, projectId } = await c.req.json();
+  const { path, command, projectId, autoRestart } = await c.req.json();
   if (!command) return c.json({ error: 'No dev command found' }, 400);
 
   const check = requireValidPath(path);
@@ -151,7 +151,7 @@ actionsApi.post('/start-dev', async (c) => {
   if (!cmdCheck.valid) return c.json({ error: cmdCheck.error }, 400);
 
   if (projectId) {
-    startProcess(projectId, check.resolved, command);
+    startProcess(projectId, check.resolved, command, { autoRestart: autoRestart ?? false });
   } else {
     Bun.spawn(['sh', '-c', command], {
       cwd: check.resolved,
@@ -190,6 +190,18 @@ actionsApi.post('/terminal-stop/:projectId', async (c) => {
 actionsApi.get('/terminal-status/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
   return c.json(getStatus(projectId));
+});
+
+actionsApi.patch('/auto-restart/:projectId', async (c) => {
+  const projectId = c.req.param('projectId');
+  const { enabled } = await c.req.json();
+  const ok = setAutoRestart(projectId, Boolean(enabled));
+  return c.json({ ok });
+});
+
+actionsApi.get('/running-processes', async (c) => {
+  const procs = getAllProcesses();
+  return c.json(procs);
 });
 
 // ─────────────────────────────────────────────
@@ -273,20 +285,9 @@ actionsApi.get('/port-info/:port', async (c) => {
 actionsApi.post('/port-kill', async (c) => {
   const { port } = await c.req.json();
   if (!validatePort(port)) return c.json({ error: 'Invalid port' }, 400);
-  try {
-    const proc = Bun.spawn(['lsof', '-ti', `:${port}`], { stdout: 'pipe', stderr: 'pipe' });
-    const raw = (await new Response(proc.stdout).text()).trim();
-    await proc.exited;
-
-    // Only allow validated numeric PIDs
-    const pids = validatePids(raw);
-    if (pids.length === 0) return c.json({ ok: true, killed: 0 });
-
-    Bun.spawn(['kill', '-9', ...pids]);
-    return c.json({ ok: true, killed: pids.length });
-  } catch {
-    return c.json({ ok: false, error: 'Failed to kill process' }, 500);
-  }
+  const { killPort } = await import('../verbEngine.js');
+  const result = await killPort(port);
+  return result.ok ? c.json({ ok: true, killed: result.killed }) : c.json({ ok: false, error: 'Failed to kill process' }, 500);
 });
 
 // ─────────────────────────────────────────────

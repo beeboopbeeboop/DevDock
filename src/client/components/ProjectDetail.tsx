@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Project } from '../types/project';
-import { PROJECT_TYPE_LABELS, PROJECT_TYPE_COLORS, STATUS_COLORS } from '../types/project';
+import { PROJECT_TYPE_LABELS, PROJECT_TYPE_COLORS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, PRIORITY_DESCRIPTIONS, priorityToTier } from '../types/project';
+import type { PriorityTier } from '../types/project';
 import { IconX, IconGitHub, IconGitCommit, IconFile, IconFolder, IconExternalLink, IconVSCode, IconTerminal, IconClaude, IconPlay } from './Icons';
+import { StatusPopover } from './StatusPopover';
 import { Tooltip } from './Tooltip';
 import { useToast } from './Toast';
-import { useProjectActions } from '../hooks/useProjects';
+import { useProjectActions, useUpdateOverride } from '../hooks/useProjects';
 import { LocalhostManager } from './LocalhostManager';
 import { GitHubTab } from './GitHubTab';
 import { DeployTab } from './DeployTab';
@@ -113,8 +115,11 @@ interface ProjectDetailProps {
 
 export function ProjectDetail({ project, onClose, initialTab }: ProjectDetailProps) {
   const actions = useProjectActions();
+  const updateOverride = useUpdateOverride();
   const { toast } = useToast();
   const [tab, setTab] = useState<TabId>(initialTab || 'overview');
+  const [priorityOpen, setPriorityOpen] = useState(false);
+  const [tagInput, setTagInput] = useState('');
   const [commits, setCommits] = useState<CommitEntry[]>([]);
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loadingCommits, setLoadingCommits] = useState(false);
@@ -230,15 +235,45 @@ export function ProjectDetail({ project, onClose, initialTab }: ProjectDetailPro
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span
-              className="p-badge"
-              style={{
-                background: `${STATUS_COLORS[project.status]}20`,
-                color: STATUS_COLORS[project.status],
-              }}
-            >
-              {project.status}
-            </span>
+            {/* Priority tier */}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="priority-tier-badge"
+                style={{ color: PRIORITY_COLORS[priorityToTier(project.priority)], borderColor: `${PRIORITY_COLORS[priorityToTier(project.priority)]}40`, cursor: 'pointer' }}
+                onClick={() => setPriorityOpen((v) => !v)}
+              >
+                {PRIORITY_LABELS[priorityToTier(project.priority)]}
+              </button>
+              {priorityOpen && (
+                <div className="status-popover" style={{ right: 0, top: '100%', marginTop: 4 }}>
+                  {([1, 2, 3, 4] as PriorityTier[]).map((t) => (
+                    <button
+                      key={t}
+                      className="status-popover-option"
+                      data-selected={priorityToTier(project.priority) === t ? 'true' : undefined}
+                      onClick={() => {
+                        updateOverride.mutate({ projectId: project.id, overrides: { customStatus: undefined } });
+                        fetch(`/api/projects/${project.id}/priority`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ priority: t === 1 ? 0 : t === 2 ? 2 : t === 3 ? 5 : 8 }),
+                        });
+                        setPriorityOpen(false);
+                      }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: PRIORITY_COLORS[t], flexShrink: 0 }} />
+                      <span>{PRIORITY_LABELS[t]}</span>
+                      <span style={{ color: 'var(--p-text-muted)', fontSize: 10 }}>{PRIORITY_DESCRIPTIONS[t]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <StatusPopover
+              currentStatus={project.status}
+              onChangeStatus={(s) => updateOverride.mutate({ projectId: project.id, overrides: { customStatus: s } })}
+              triggerStyle="badge"
+            />
             {project.githubUrl && (
               <Tooltip content="Open on GitHub">
                 <a
@@ -315,6 +350,57 @@ export function ProjectDetail({ project, onClose, initialTab }: ProjectDetailPro
                 </div>
               </div>
 
+              {/* Tags */}
+              <div className="detail-section">
+                <div className="detail-section-title">Tags</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                  {(() => {
+                    const autoTags = new Set([
+                      ...project.techStack,
+                      PROJECT_TYPE_LABELS[project.type],
+                      project.type,
+                    ]);
+                    const customTags = project.tags.filter((t) => !autoTags.has(t));
+                    return customTags.length > 0 ? customTags.map((tag) => (
+                      <span key={tag} className="p-badge p-badge-subtle tag-custom">
+                        {tag}
+                        <button
+                          className="tag-remove-btn"
+                          onClick={() => {
+                            const updated = customTags.filter((t) => t !== tag);
+                            updateOverride.mutate({ projectId: project.id, overrides: { customTags: updated } });
+                          }}
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    )) : (
+                      <span style={{ fontSize: 11, color: 'var(--p-text-muted)' }}>No custom tags</span>
+                    );
+                  })()}
+                  <form
+                    className="tag-input-inline"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const val = tagInput.trim().toLowerCase();
+                      if (!val || project.tags.includes(val)) { setTagInput(''); return; }
+                      const autoTags = new Set([...project.techStack, PROJECT_TYPE_LABELS[project.type], project.type]);
+                      const existing = project.tags.filter((t) => !autoTags.has(t));
+                      updateOverride.mutate({ projectId: project.id, overrides: { customTags: [...existing, val] } });
+                      setTagInput('');
+                    }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="+ tag"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      style={{ width: 60, fontSize: 11, padding: '2px 6px', background: 'var(--p-bg-elevated)', border: '1px solid var(--p-border)', borderRadius: 4, color: 'var(--p-text)' }}
+                    />
+                  </form>
+                </div>
+              </div>
+
               <div className="detail-section">
                 <div className="detail-section-title">Quick Actions</div>
                 <div className="detail-quick-actions">
@@ -334,7 +420,7 @@ export function ProjectDetail({ project, onClose, initialTab }: ProjectDetailPro
                     <button
                       className="detail-action-btn"
                       style={{ color: 'var(--p-success)' }}
-                      onClick={() => { actions.startDev(project.path, project.devCommand!); toast('Dev server starting...', 'info'); }}
+                      onClick={() => { actions.startDev(project.path, project.devCommand!, project.id); toast('Dev server starting...', 'info'); }}
                     >
                       <IconPlay size={12} /> Start Dev
                     </button>

@@ -50,6 +50,17 @@ function print(data: unknown) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+function readLine(): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.once('data', (data) => {
+      process.stdin.pause();
+      resolve(String(data).trim());
+    });
+  });
+}
+
 function printTable(rows: Record<string, unknown>[], columns: string[]) {
   if (rows.length === 0) { console.log('(none)'); return; }
   const widths = columns.map((col) =>
@@ -84,7 +95,50 @@ async function resolveProject(idOrName: string): Promise<{ id: string; path: str
 // Command routing
 // ─────────────────────────────────────────────
 
-const args = process.argv.slice(2);
+const KNOWN_VERBS = new Set([
+  'reset', 'start', 'stop', 'status', 'logs', 'pull', 'push', 'commit', 'deploy',
+]);
+
+const rawArgs = process.argv.slice(2);
+
+// Levenshtein for typo detection
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const d: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[m][n];
+}
+
+function closestVerb(input: string): string | null {
+  let best: string | null = null, bestDist = 3;
+  for (const v of KNOWN_VERBS) {
+    const d = lev(input.toLowerCase(), v);
+    if (d < bestDist) { bestDist = d; best = v; }
+  }
+  return best;
+}
+
+// Order-agnostic detection + typo correction
+// e.g., "site reset" → "do reset site"
+// e.g., "resst site" → "do resst site" (typo handled in do handler)
+let args = rawArgs;
+if (rawArgs.length >= 2 && !isKnownCommand(rawArgs[0]) && KNOWN_VERBS.has(rawArgs[1])) {
+  args = ['do', rawArgs[1], rawArgs[0], ...rawArgs.slice(2)];
+} else if (rawArgs.length >= 1 && !isKnownCommand(rawArgs[0]) && closestVerb(rawArgs[0])) {
+  // Looks like a misspelled verb — route through do for typo correction
+  args = ['do', rawArgs[0], ...rawArgs.slice(1)];
+}
+
+function isKnownCommand(s: string): boolean {
+  return ['projects', 'scan', 'git', 'ports', 'dev', 'deploy', 'config', 'open', 'health',
+    'env', 'secrets', 'integrations', 'do', 'aka', 'log', 'history', 'shell-init',
+    ...KNOWN_VERBS].includes(s);
+}
+
 const cmd = args[0];
 const sub = args[1];
 
@@ -460,29 +514,219 @@ async function main() {
       break;
     }
 
+    // ─────────────────────────────────────────────
+    // Smart Verb System
+    // ─────────────────────────────────────────────
+
+    case 'do': {
+      const verb = args[1];
+      const target = args[2];
+      if (!verb) { console.error('Usage: devdock do <verb> [target] [args...]'); process.exit(1); }
+
+      const body: Record<string, unknown> = {
+        verb,
+        source: 'cli',
+        cwd: process.cwd(),
+      };
+      if (target) body.target = target;
+
+      // Extract -m message for commit
+      const msgIdx = args.indexOf('-m');
+      if (msgIdx !== -1 && args[msgIdx + 1]) body.message = args[msgIdx + 1];
+
+      // Pass remaining args
+      const extraArgs = args.slice(3).filter(a => a !== '-m' && a !== args[msgIdx + 1]);
+      if (extraArgs.length) body.args = extraArgs;
+
+      let result = await api('/verbs/do', { method: 'POST', body: JSON.stringify(body) });
+
+      // Typo correction: "Did you mean X?"
+      if (result.correction) {
+        process.stdout.write(`Did you mean: \x1b[1m${result.suggested}\x1b[0m ${target || ''}? [Y/n] `);
+        const answer = await readLine();
+        if (answer.toLowerCase() === 'n') process.exit(0);
+        body.verb = result.suggested;
+        result = await api('/verbs/do', { method: 'POST', body: JSON.stringify(body) });
+      }
+
+      if (result.ambiguous) {
+        if (result.candidates?.length === 0) {
+          console.error(`Project not found: ${target}`);
+        } else {
+          console.error('Ambiguous target. Did you mean:');
+          for (const c of result.candidates) {
+            console.error(`  ${c.name} (${c.id})`);
+          }
+        }
+        process.exit(1);
+      }
+
+      if (result.steps) {
+        for (const step of result.steps) {
+          const icon = step.ok ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+          console.log(`  ${icon} ${step.message}`);
+        }
+      }
+      if (!result.ok) process.exit(1);
+      break;
+    }
+
+    case 'aka': {
+      if (args.includes('--list') || !args[1]) {
+        const aliases = await api('/verbs/aliases');
+        if (aliases.length === 0) {
+          console.log('No aliases set. Use: devdock aka <alias> <project>');
+        } else {
+          printTable(aliases, ['alias', 'projectName', 'projectId']);
+        }
+      } else if (args.includes('--remove') && args[args.indexOf('--remove') + 1]) {
+        const alias = args[args.indexOf('--remove') + 1];
+        await api(`/verbs/aliases/${alias}`, { method: 'DELETE' });
+        console.log(`Removed alias: ${alias}`);
+      } else if (args[1] && args[2]) {
+        const project = await resolveProject(args[2]);
+        const result = await api('/verbs/aliases', {
+          method: 'POST',
+          body: JSON.stringify({ alias: args[1], projectId: project.id }),
+        });
+        if (result.error) { console.error(result.error); process.exit(1); }
+        console.log(`${args[1]} → ${project.name}`);
+      } else {
+        console.error('Usage: devdock aka <alias> <project> | --list | --remove <alias>');
+      }
+      break;
+    }
+
+    case 'log':
+    case 'history': {
+      const params = new URLSearchParams();
+      const verbIdx = args.indexOf('--verb');
+      if (verbIdx !== -1 && args[verbIdx + 1]) params.set('verb', args[verbIdx + 1]);
+      const limitIdx = args.indexOf('--limit');
+      params.set('limit', limitIdx !== -1 ? args[limitIdx + 1] : '20');
+
+      const logs = await api(`/verbs/logs?${params}`);
+      if (logs.length === 0) {
+        console.log('No commands logged yet.');
+      } else {
+        printTable(
+          logs.map((l: Record<string, unknown>) => ({
+            time: (l.createdAt as string)?.slice(5, 16),
+            verb: l.verb,
+            project: l.projectName || '-',
+            status: l.status,
+            ms: l.durationMs || '-',
+          })),
+          ['time', 'verb', 'project', 'status', 'ms'],
+        );
+      }
+      break;
+    }
+
+    case 'shell-init': {
+      const verbs = ['reset', 'start', 'stop', 'status', 'logs', 'pull', 'push', 'commit', 'deploy'];
+      const metaVerbs = ['aka', 'log'];
+      console.log('# DevDock Smart Verbs — auto-generated');
+      console.log('# Add to .zshrc: eval "$(devdock shell-init)"');
+      console.log('# Note: "reset" shadows the terminal reset command. Remove if needed.');
+      console.log('');
+      // Action verbs — bare
+      for (const v of verbs) {
+        console.log(`${v}() { devdock do ${v} "$@"; }`);
+      }
+      // "open" needs special handling — don't shadow /usr/bin/open
+      console.log('dopen() { devdock do open "$@"; }');
+      console.log('');
+      // Meta verbs — bare too
+      for (const v of metaVerbs) {
+        console.log(`${v}() { devdock ${v} "$@"; }`);
+      }
+      console.log('');
+      // dd = smart universal entry, handles any argument order
+      console.log('alias dd="devdock"');
+      break;
+    }
+
+    // Route bare verbs through `do` handler: dd reset site, dd site reset
+    case 'reset': case 'start': case 'stop': case 'status': case 'logs':
+    case 'pull': case 'push': case 'commit': case 'deploy': {
+      // Rewrite as: devdock do <verb> <rest...>
+      const verb = cmd;
+      const target = args[1];
+      const body: Record<string, unknown> = {
+        verb,
+        source: 'cli',
+        cwd: process.cwd(),
+      };
+      if (target) body.target = target;
+      const msgIdx = args.indexOf('-m');
+      if (msgIdx !== -1 && args[msgIdx + 1]) body.message = args[msgIdx + 1];
+      const extraArgs = args.slice(2).filter(a => a !== '-m' && a !== args[msgIdx + 1]);
+      if (extraArgs.length) body.args = extraArgs;
+
+      const result = await api('/verbs/do', { method: 'POST', body: JSON.stringify(body) });
+      if (result.ambiguous) {
+        if (result.candidates?.length === 0) {
+          console.error(`Project not found: ${target}`);
+        } else {
+          console.error('Ambiguous target. Did you mean:');
+          for (const c of result.candidates) console.error(`  ${c.name} (${c.id})`);
+        }
+        process.exit(1);
+      }
+      if (result.steps) {
+        for (const step of result.steps) {
+          const icon = step.ok ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+          console.log(`  ${icon} ${step.message}`);
+        }
+      }
+      if (!result.ok) process.exit(1);
+      break;
+    }
+
     default: {
-      console.log(`DevDock CLI
+      console.log(`DevDock CLI — Local Dev Control Plane
 
 Usage: devdock <command> [options]
 
-Commands:
-  projects [--type X] [--dirty] [--json]  List projects
+Smart Verbs (via shell integration):
+  reset <project>                          Kill port, clear cache, restart
+  start <project>                          Start dev server
+  stop <project|all>                       Stop dev server
+  status [project]                         Show server status
+  logs <project>                           Show dev server output
+  pull <project>                           Git pull
+  push <project>                           Git push
+  commit <project> -m "message"            Git add + commit
+  deploy <project>                         Trigger deployment
+
+  Projects resolve by fuzzy match or alias:
+    reset site    → website-2026-react
+    stop p        → proteus
+
+Project Management:
+  projects [--type X] [--dirty] [--json]   List projects
   scan                                     Rescan all project directories
-  git status|commit|push|pull|branches <id> Git operations
-  ports [kill <port>] [--json]            Port management
-  dev start|stop|status|logs <id>         Dev server management
-  deploy trigger|status|history <id>      Deployment operations
-  env [<id>|list|read|set|compare]        Manage .env files
-  env                                      Audit env health across all projects
-  env read <id> [--reveal] [--file .env]  Read env variables (masked by default)
-  env set <id> KEY value [--file .env]    Set a variable
-  env compare <id>                         Compare .env vs .env.example
-  secrets [<id>]                           Scan for hardcoded secrets
-  secrets audit                            Audit all projects for leaked keys
-  config [set <key> <json-value>]         View/update config
-  open <id> [--cursor]                    Open project in editor
-  integrations                            Check CLI integration status
-  health                                  Server health check
+  aka <alias> <project>                    Set project alias
+  aka --list                               Show all aliases
+  aka --remove <alias>                     Remove alias
+
+Direct Commands:
+  do <verb> [target] [args...]             Execute verb directly
+  git status|commit|push|pull <id>         Git operations
+  ports [kill <port>] [--json]             Port management
+  dev start|stop|status|logs <id>          Dev server management
+  deploy trigger|status|history <id>       Deployment operations
+  env [<id>|list|read|set|compare]         Manage .env files
+  secrets [<id>|audit]                     Scan for hardcoded secrets
+  config [set <key> <json-value>]          View/update config
+  open <id> [--cursor]                     Open project in editor
+  log [--verb X] [--limit N]               View command audit log
+  integrations                             Check CLI integration status
+  health                                   Server health check
+
+Shell Integration:
+  eval "$(devdock shell-init)"             Add to .zshrc for bare verbs
 
 Environment:
   DEVDOCK_URL   Override server URL (default: http://localhost:3070)

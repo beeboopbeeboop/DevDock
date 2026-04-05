@@ -3,6 +3,8 @@ export type {
   ProjectType,
   ProjectStatus,
   ProjectFilters,
+  PriorityTier,
+  FilterPreset,
   GitHubInfo,
   DeployTarget,
   PortEntry,
@@ -18,10 +20,15 @@ export type {
   GraphEdge,
   GraphData,
   SyncStatusEntry,
+  StartupProfile,
 } from '../../shared/types';
 
 export {
   PROJECT_TYPE_LABELS,
   PROJECT_TYPE_COLORS,
   STATUS_COLORS,
+  PRIORITY_LABELS,
+  PRIORITY_COLORS,
+  PRIORITY_DESCRIPTIONS,
+  priorityToTier,
 } from '../../shared/types';

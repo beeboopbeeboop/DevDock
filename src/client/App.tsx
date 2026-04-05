@@ -14,19 +14,19 @@ import { BatchActionBar } from './components/BatchActionBar';
 import { DockerManager } from './components/DockerManager';
 import { EnvSyncChecker } from './components/EnvSyncChecker';
 import { InsightsView } from './components/InsightsView';
-import { useProjects, useScan, useProjectActions } from './hooks/useProjects';
+import { useProjects, useScan, useProjectActions, usePresets, useCreatePreset, useDeletePreset } from './hooks/useProjects';
 import { usePortStatusBatch } from './hooks/usePortStatus';
 import { useToast } from './components/Toast';
 import { useNotifications } from './hooks/useNotifications';
-import { IconGrid, IconList, IconSettings, IconFolder } from './components/Icons';
+import { IconGrid, IconList, IconSettings, IconFolder, IconArchive } from './components/Icons';
 import {
   PROJECT_TYPE_LABELS,
   PROJECT_TYPE_COLORS,
 } from './types/project';
-import type { Project, ProjectFilters, ProjectStatus, ProjectType } from './types/project';
+import type { Project, ProjectFilters, ProjectStatus, ProjectType, FilterPreset } from './types/project';
 
 export type ViewMode = 'grid' | 'list';
-export type AppView = 'projects' | 'ports' | 'docker' | 'graph' | 'search' | 'env' | 'insights';
+export type AppView = 'projects' | 'archive' | 'ports' | 'docker' | 'graph' | 'search' | 'env' | 'insights';
 
 const CMD_SHORTCUT = navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K';
 
@@ -63,9 +63,16 @@ export function App() {
   const { notify } = useNotifications();
   const prevScanning = useRef(false);
   const actions = useProjectActions();
+  const { data: presets = [] } = usePresets();
+  const createPreset = useCreatePreset();
+  const deletePreset = useDeletePreset();
 
   const displayProjects = useMemo(() => {
     let result = projects;
+    // Hide archived projects from main view unless explicitly filtered to archived
+    if (filters.status !== 'archived') {
+      result = result.filter((p) => p.status !== 'archived');
+    }
     if (showDirtyOnly) result = result.filter((p) => p.gitDirty);
     if (techStackFilter.size > 0) {
       result = result.filter((p) =>
@@ -73,7 +80,7 @@ export function App() {
       );
     }
     return result;
-  }, [showDirtyOnly, techStackFilter, projects]);
+  }, [showDirtyOnly, techStackFilter, projects, filters.status]);
 
   // Track scan completion for toast + desktop notification
   useEffect(() => {
@@ -191,6 +198,10 @@ export function App() {
     setFilters((f) => ({ ...f, status }));
   }, []);
 
+  const handleFilterTag = useCallback((tag?: string) => {
+    setFilters((f) => ({ ...f, tag }));
+  }, []);
+
   const handleSort = useCallback((sort: string) => {
     setFilters((f) => ({ ...f, sort: sort as ProjectFilters['sort'] }));
   }, []);
@@ -198,6 +209,28 @@ export function App() {
   const handleScan = useCallback(() => {
     if (!scan.isPending) scan.mutate();
   }, [scan]);
+
+  const handleSavePreset = useCallback(() => {
+    const name = window.prompt('Name this view:');
+    if (!name?.trim()) return;
+    createPreset.mutate({
+      name: name.trim(),
+      filters: {
+        ...filters,
+        showDirtyOnly: showDirtyOnly || undefined,
+        techStack: techStackFilter.size > 0 ? [...techStackFilter] : undefined,
+      },
+    });
+    toast('View saved', 'success');
+  }, [filters, showDirtyOnly, techStackFilter, createPreset, toast]);
+
+  const handleApplyPreset = useCallback((preset: FilterPreset) => {
+    const f = preset.filters;
+    setFilters({ search: f.search, type: f.type, status: f.status, tag: f.tag, sort: f.sort || 'priority' });
+    setShowDirtyOnly(!!f.showDirtyOnly);
+    setTechStackFilter(new Set(f.techStack || []));
+    setAppView('projects');
+  }, []);
 
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -243,8 +276,18 @@ export function App() {
     .filter((p) => p.devPort && runningPorts.has(p.devPort))
     .map((p) => ({ name: p.name, port: p.devPort! }));
 
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of allProjects) {
+      for (const t of p.tags) {
+        counts[t] = (counts[t] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [allProjects]);
+
   const activeFilterCount =
-    (filters.type ? 1 : 0) + (filters.status ? 1 : 0) + (filters.search ? 1 : 0) + (showDirtyOnly ? 1 : 0) + (techStackFilter.size > 0 ? 1 : 0);
+    (filters.type ? 1 : 0) + (filters.status ? 1 : 0) + (filters.search ? 1 : 0) + (filters.tag ? 1 : 0) + (showDirtyOnly ? 1 : 0) + (techStackFilter.size > 0 ? 1 : 0);
 
   const selectProjectById = useCallback((id: string) => {
     const proj = allProjects.find((p) => p.id === id);
@@ -271,6 +314,12 @@ export function App() {
         appView={appView}
         onChangeView={setAppView}
         onFilterDirty={() => { setShowDirtyOnly((v) => !v); setAppView('projects'); }}
+        tagCounts={tagCounts}
+        activeTag={filters.tag}
+        onFilterTag={handleFilterTag}
+        presets={presets}
+        onApplyPreset={handleApplyPreset}
+        onDeletePreset={(id) => deletePreset.mutate(id)}
       />
 
       <div className="main-content">
@@ -317,6 +366,15 @@ export function App() {
                     <IconList size={14} />
                   </button>
                 </div>
+                {activeFilterCount > 0 && (
+                  <button
+                    className="save-view-btn"
+                    onClick={handleSavePreset}
+                    title="Save current filters as a view"
+                  >
+                    Save View
+                  </button>
+                )}
                 <button
                   className="p-icon-btn"
                   onClick={() => setSettingsOpen(true)}
@@ -452,6 +510,55 @@ export function App() {
         )}
         {appView === 'insights' && (
           <InsightsView />
+        )}
+        {appView === 'archive' && (
+          <>
+            <div className="topbar">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span className="topbar-title">Archive</span>
+                <span className="topbar-meta">
+                  {allProjects.filter(p => p.status === 'archived').length} shelved
+                </span>
+              </div>
+              <div className="topbar-actions">
+                <div className="view-toggle">
+                  <button
+                    data-active={viewMode === 'grid' ? 'true' : undefined}
+                    onClick={() => setViewMode('grid')}
+                    title="Grid view"
+                  >
+                    <IconGrid size={14} />
+                  </button>
+                  <button
+                    data-active={viewMode === 'list' ? 'true' : undefined}
+                    onClick={() => setViewMode('list')}
+                    title="List view"
+                  >
+                    <IconList size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="archive-notice">
+              <IconArchive size={14} />
+              <span>Projects moved to <code>~/Documents/_Archive/</code> are automatically shelved here.</span>
+            </div>
+            <div className="content-area">
+              {(() => {
+                const archived = allProjects.filter(p => p.status === 'archived');
+                if (archived.length === 0) return (
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><IconArchive size={36} color="var(--p-text-muted)" /></div>
+                    <div className="empty-state-title">No archived projects</div>
+                    <div className="empty-state-desc">Move project folders to ~/Documents/_Archive/ and rescan to shelve them here.</div>
+                  </div>
+                );
+                return viewMode === 'grid'
+                  ? <ProjectGrid projects={archived} onSelectProject={setSelectedProject} runningPorts={runningPorts} focusedIndex={-1} batchMode={false} selectedIds={new Set()} onToggleSelect={() => {}} />
+                  : <ProjectList projects={archived} onSelectProject={setSelectedProject} runningPorts={runningPorts} focusedIndex={-1} batchMode={false} selectedIds={new Set()} onToggleSelect={() => {}} />;
+              })()}
+            </div>
+          </>
         )}
       </div>
 

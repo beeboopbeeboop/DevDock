@@ -77,7 +77,15 @@ export function detectProject(dir: string): DetectionResult {
   if (pkg) {
     description = (pkg.description as string) || null;
     const scripts = pkg.scripts as Record<string, string> || {};
-    devCommand = scripts.dev || scripts.start || null;
+    // Use package manager run command, not raw script content
+    // (raw scripts like "next dev" won't work outside node_modules/.bin)
+    const hasYarn = fileExists(dir, 'yarn.lock');
+    const hasPnpm = fileExists(dir, 'pnpm-lock.yaml');
+    const hasBun = fileExists(dir, 'bun.lock') || fileExists(dir, 'bun.lockb');
+    const pm = hasBun ? 'bun' : hasPnpm ? 'pnpm' : hasYarn ? 'yarn' : 'npm';
+    if (scripts.dev) devCommand = `${pm} run dev`;
+    else if (scripts.start) devCommand = `${pm} run start`;
+    else devCommand = null;
 
     // Detect tech stack from deps
     if (hasDep(pkg, 'react')) techStack.push('react');

@@ -1,0 +1,2069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>City Decision</title>
+  <style>
+    :root {
+      --bg-base:        #0d0d0f;
+      --bg-surface:     #16161a;
+      --bg-elevated:    #1e1e24;
+      --bg-hover:       #26262e;
+      --border:         #2a2a35;
+      --border-active:  #4a4a60;
+      --text-primary:   #f0f0f5;
+      --text-secondary: #8888a0;
+      --text-muted:     #55556a;
+      --accent:         #7c6dfa;
+      --accent-hover:   #9285fc;
+      --accent-dim:     rgba(124,109,250,0.14);
+      --success:        #4caf7d;
+      --warning:        #f5a623;
+      --danger:         #e05555;
+      --radius:         8px;
+      --radius-sm:      4px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      background: var(--bg-base); color: var(--text-primary);
+      height: 100vh; display: flex; flex-direction: column;
+      overflow: hidden; font-size: 13px; line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; background: var(--bg-surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .app-title { font-size: 13px; font-weight: 700; letter-spacing: 0.01em; }
+    .app-title span { color: var(--accent); font-weight: 400; }
+    .save-status { font-size: 11px; color: var(--text-muted); margin-left: auto; transition: color 0.3s; }
+    .save-status.saved { color: var(--success); }
+
+    /* ── Layout ── */
+    .app-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 190px; flex-shrink: 0; background: var(--bg-surface);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    }
+    .sidebar-head {
+      padding: 11px 12px 7px; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-muted);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .btn-icon {
+      background: none; border: none; color: var(--text-secondary); cursor: pointer;
+      padding: 2px 6px; border-radius: var(--radius-sm); font-size: 14px; line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-icon:hover { color: var(--accent); background: var(--accent-dim); }
+    .session-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
+    .session-item {
+      padding: 7px 9px; border-radius: var(--radius); cursor: pointer;
+      margin-bottom: 2px; border: 1px solid transparent; transition: background 0.12s;
+    }
+    .session-item:hover { background: var(--bg-hover); }
+    .session-item.active { background: var(--accent-dim); border-color: var(--accent); }
+    .session-item-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session-item-meta { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+    .sidebar-footer { padding: 9px; border-top: 1px solid var(--border); }
+
+    /* ── Main ── */
+    .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .tab-bar {
+      display: flex; padding: 0 16px; background: var(--bg-surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .tab-btn {
+      background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-muted); cursor: pointer; padding: 9px 12px;
+      font-size: 12px; font-weight: 500; letter-spacing: 0.01em;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .tab-btn:hover { color: var(--text-secondary); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Tab Content ── */
+    .tab-content { display: none; overflow-y: auto; flex: 1; padding: 20px; }
+    .tab-content.active { display: block; }
+
+    /* ── Analysis: 2-panel ── */
+    #tab-analysis { padding: 0; overflow: hidden; }
+    .analysis-layout { display: grid; grid-template-columns: 310px 1fr; height: 100%; }
+    .priorities-panel { border-right: 1px solid var(--border); overflow-y: auto; padding: 18px 16px; }
+    .ranking-panel { overflow-y: auto; padding: 18px 20px; }
+
+    /* ── Priority sliders ── */
+    .panel-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-secondary); margin-bottom: 3px; }
+    .panel-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.6; }
+    .dim-row { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+    .dim-label { font-size: 12px; color: var(--text-secondary); width: 142px; flex-shrink: 0; line-height: 1.3; }
+    .dim-slider {
+      -webkit-appearance: none; appearance: none; flex: 1; height: 3px;
+      background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .dim-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 13px; height: 13px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+    }
+    .dim-val { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 14px; text-align: right; flex-shrink: 0; }
+    .dim-val.high { color: var(--accent); }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+    .section-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.09em; color: var(--text-muted); margin-bottom: 10px;
+    }
+    .choice-row { margin-bottom: 12px; }
+    .choice-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
+    .choice-options { display: flex; gap: 5px; flex-wrap: wrap; }
+    .choice-btn {
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      color: var(--text-muted); border-radius: 14px; padding: 3px 10px;
+      font-size: 11px; cursor: pointer; transition: all 0.12s; font-family: inherit;
+    }
+    .choice-btn:hover { color: var(--text-secondary); border-color: var(--border-active); }
+    .choice-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .panel-textarea {
+      width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;
+      font-family: inherit; padding: 8px 10px; resize: vertical; min-height: 64px;
+      outline: none; transition: border-color 0.15s; line-height: 1.6;
+    }
+    .panel-textarea:focus { border-color: var(--accent); }
+    .panel-textarea::placeholder { color: var(--text-muted); }
+
+    /* ── Ranking panel ── */
+    .ranking-notice {
+      font-size: 11px; color: var(--text-muted); margin-bottom: 14px;
+      padding: 8px 11px; background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); line-height: 1.5;
+    }
+    .ranking-notice.primed { color: var(--text-secondary); border-color: var(--border-active); }
+
+    /* ── City rank card ── */
+    .city-rank-card {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 7px; overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .city-rank-card.rank-1 { border-color: var(--accent); }
+    .city-rank-card.conflict { border-left: 3px solid var(--warning); }
+    .city-rank-card.low-conf { opacity: 0.85; }
+    .city-rank-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 13px; cursor: pointer; user-select: none;
+    }
+    .rank-num { font-size: 11px; font-weight: 700; color: var(--text-muted); width: 18px; text-align: center; flex-shrink: 0; }
+    .rank-1 .rank-num { color: var(--accent); }
+    .city-name-block { flex: 1; min-width: 0; }
+    .city-name { font-size: 13px; font-weight: 600; }
+    .city-tagline { font-size: 11px; color: var(--text-muted); margin-top: 1px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rank-1 .city-tagline { color: rgba(124,109,250,0.7); }
+    .match-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .fit-label {
+      font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .fit-strong { background: rgba(76,175,125,0.13); color: var(--success); }
+    .fit-good   { background: rgba(124,109,250,0.13); color: var(--accent); }
+    .fit-mod    { background: var(--bg-hover); color: var(--text-muted); }
+    .fit-weak   { background: rgba(224,85,85,0.1); color: var(--danger); }
+    .match-pct { font-size: 17px; font-weight: 800; min-width: 44px; text-align: right; }
+    .rank-1 .match-pct { color: var(--accent); }
+    .expand-caret { font-size: 9px; color: var(--text-muted); }
+
+    /* ── Rank card details ── */
+    .city-rank-details { display: none; padding: 0 13px 13px; border-top: 1px solid var(--border); }
+    .city-rank-details.open { display: block; }
+    .verdict-box {
+      font-size: 12px; color: var(--text-secondary); line-height: 1.7;
+      margin: 10px 0 12px; padding: 9px 12px; background: var(--bg-elevated);
+      border-radius: var(--radius-sm); border-left: 2px solid var(--accent);
+    }
+    .dim-breakdown { display: flex; flex-direction: column; gap: 5px; }
+    .dim-br-row { display: flex; align-items: center; gap: 8px; }
+    .dim-br-label { font-size: 11px; color: var(--text-muted); width: 126px; flex-shrink: 0; }
+    .dim-br-bar-wrap { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .dim-br-bar { height: 100%; border-radius: 2px; transition: width 0.25s; }
+    .dim-br-val { font-size: 10px; color: var(--text-muted); width: 26px; text-align: right; }
+    .dim-impact { font-size: 10px; padding: 1px 5px; border-radius: 6px; font-weight: 600; width: 38px; text-align: center; flex-shrink: 0; }
+    .imp-hi { background: rgba(76,175,125,0.13); color: var(--success); }
+    .imp-lo { background: rgba(224,85,85,0.09); color: var(--danger); }
+    .imp-md { background: var(--bg-hover); color: var(--text-muted); }
+    .city-notes-display { margin-top: 10px; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+    .opp-cost { margin-top: 10px; padding: 8px 10px; background: rgba(124,109,250,0.07); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+    .visa-note {
+      margin-top: 9px; padding: 6px 10px; background: rgba(245,166,35,0.07);
+      border: 1px solid rgba(245,166,35,0.18); border-radius: var(--radius-sm);
+      font-size: 11px; color: var(--warning); line-height: 1.5;
+    }
+
+    /* ── Framework tab ── */
+    .fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; margin-bottom: 0;
+    }
+    .card-header {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--text-secondary);
+    }
+    .card-body { padding: 14px; }
+    .card-desc {
+      font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    }
+    .gut-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .gut-city-name { font-size: 12px; font-weight: 500; width: 100px; flex-shrink: 0; color: var(--text-secondary); }
+    .gut-slider {
+      -webkit-appearance: none; appearance: none; flex: 1; height: 3px;
+      border-radius: 2px; outline: none; cursor: pointer;
+      background: linear-gradient(to right, var(--danger) 0%, var(--warning) 50%, var(--success) 100%);
+    }
+    .gut-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 13px; height: 13px;
+      border-radius: 50%; background: #fff; border: 2px solid var(--border-active); cursor: pointer;
+    }
+    .gut-label { font-size: 10px; font-weight: 600; min-width: 72px; text-align: right; }
+    .gut-label.excited    { color: var(--success); }
+    .gut-label.hopeful    { color: #7dcf9a; }
+    .gut-label.neutral    { color: var(--text-muted); }
+    .gut-label.apprehensive { color: var(--warning); }
+    .gut-label.dreading   { color: var(--danger); }
+
+    .regret-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+    .regret-city-name { font-size: 12px; font-weight: 500; width: 100px; flex-shrink: 0; color: var(--text-secondary); }
+    .regret-slider {
+      -webkit-appearance: none; appearance: none; flex: 1; height: 3px;
+      background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .regret-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 13px; height: 13px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+    }
+    .regret-val { font-size: 11px; color: var(--text-muted); width: 14px; text-align: right; flex-shrink: 0; }
+
+    /* ── Gut vs Logic comparison ── */
+    .vs-block {
+      background: var(--bg-elevated); border-radius: var(--radius); padding: 14px;
+      margin-top: 16px; grid-column: 1 / -1;
+    }
+    .vs-block-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--text-secondary); margin-bottom: 12px;
+    }
+    .vs-table { width: 100%; border-collapse: collapse; }
+    .vs-table th {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted); padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .vs-table td { padding: 7px 8px; font-size: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .vs-table tr:last-child td { border-bottom: none; }
+    .vs-rank { font-weight: 700; }
+    .vs-agree { color: var(--success); }
+    .vs-close { color: var(--text-muted); }
+    .vs-conflict { color: var(--warning); }
+    .conflict-note { font-size: 11px; color: var(--warning); }
+    .vs-footer { font-size: 11px; color: var(--text-muted); margin-top: 10px; line-height: 1.6; }
+
+    /* ── Compare tab ── */
+    .compare-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .compare-select {
+      flex: 1; background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;
+      font-family: inherit; padding: 8px 12px; outline: none; cursor: pointer;
+    }
+    .compare-select:focus { border-color: var(--accent); }
+    .compare-vs { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .compare-city-name { font-size: 13px; font-weight: 600; text-align: center; padding: 8px; background: var(--bg-surface); border-radius: var(--radius-sm); }
+    .compare-city-name.winner { background: var(--accent-dim); color: var(--accent); }
+    .compare-dim-label { font-size: 11px; color: var(--text-muted); padding: 4px 0; border-top: 1px solid var(--border); margin-top: 8px; }
+    .compare-score { font-size: 12px; text-align: center; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.12s; background: var(--bg-elevated); }
+    .compare-score:hover { background: var(--bg-hover); }
+    .compare-score.selected { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+    .compare-score.tie { background: var(--bg-hover); color: var(--text-muted); }
+    .compare-score.tie.selected { background: rgba(245,166,35,0.13); color: var(--warning); }
+    .compare-score-value { font-size: 16px; font-weight: 700; }
+    .compare-summary { margin-top: 18px; padding: 14px; background: var(--bg-surface); border-radius: var(--radius); }
+    .compare-summary-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-secondary); margin-bottom: 10px; }
+    .compare-tally { display: flex; gap: 20px; margin-bottom: 12px; }
+    .compare-tally-item { text-align: center; }
+    .compare-tally-num { font-size: 28px; font-weight: 800; }
+    .compare-tally-num.a { color: var(--accent); }
+    .compare-tally-num.b { color: #6db3fa; }
+    .compare-tally-label { font-size: 11px; color: var(--text-muted); }
+    .compare-insight { font-size: 12px; color: var(--text-secondary); line-height: 1.7; padding-top: 10px; border-top: 1px solid var(--border); }
+
+    /* ── Context tab ── */
+    .ctx-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; gap: 16px; }
+    .ctx-header-text h3 { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+    .ctx-header-text p { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+    .add-doc-form {
+      background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px; margin-bottom: 14px;
+    }
+    .add-doc-row { display: flex; gap: 8px; margin-bottom: 9px; }
+    .add-doc-input {
+      flex: 1; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;
+      font-family: inherit; padding: 7px 10px; outline: none;
+    }
+    .add-doc-input:focus { border-color: var(--accent); }
+    .add-doc-input::placeholder { color: var(--text-muted); }
+    .type-select {
+      background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary);
+      border-radius: var(--radius-sm); padding: 7px 10px; font-family: inherit; font-size: 12px; outline: none; cursor: pointer;
+    }
+    .doc-textarea {
+      width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;
+      font-family: inherit; padding: 8px 10px; resize: vertical; min-height: 100px;
+      outline: none; transition: border-color 0.15s; line-height: 1.6;
+    }
+    .doc-textarea:focus { border-color: var(--accent); }
+    .doc-textarea::placeholder { color: var(--text-muted); }
+    .drop-zone {
+      border: 1px dashed var(--border); border-radius: var(--radius-sm);
+      padding: 8px 12px; text-align: center; cursor: pointer; transition: all 0.15s;
+      color: var(--text-muted); font-size: 11px; flex: 1;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .add-doc-actions { display: flex; gap: 8px; margin-top: 9px; align-items: center; }
+    .doc-card {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 9px; overflow: hidden;
+    }
+    .doc-card-head {
+      display: flex; align-items: center; gap: 10px; padding: 10px 13px;
+      border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    .doc-type-pill {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 2px 7px; border-radius: 8px; flex-shrink: 0;
+    }
+    .pill-voice { background: rgba(76,175,125,0.13); color: var(--success); }
+    .pill-chat  { background: rgba(124,109,250,0.13); color: var(--accent); }
+    .pill-note  { background: rgba(245,166,35,0.13); color: var(--warning); }
+    .pill-other { background: var(--bg-hover); color: var(--text-muted); }
+    .doc-title-input {
+      flex: 1; background: none; border: none; color: var(--text-primary);
+      font-size: 13px; font-weight: 500; font-family: inherit; outline: none;
+    }
+    .doc-meta { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+    .doc-body { padding: 12px 13px; }
+    .doc-footer {
+      padding: 7px 13px; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .doc-wordcount { font-size: 10px; color: var(--text-muted); }
+
+    /* ── Cities tab ── */
+    .cities-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap: 13px; }
+    .city-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .city-card-head {
+      display: flex; align-items: center; gap: 9px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+    }
+    .city-name-edit {
+      flex: 1; background: none; border: none; color: var(--text-primary);
+      font-size: 13px; font-weight: 600; font-family: inherit; outline: none;
+    }
+    .city-name-edit:focus { border-bottom: 1px solid var(--accent); }
+    .btn-remove {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 15px; padding: 1px 3px; border-radius: 3px;
+    }
+    .btn-remove:hover { color: var(--danger); }
+    .city-card-body { padding: 12px; }
+    .city-dim-row { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .city-dim-label { font-size: 11px; color: var(--text-muted); width: 110px; flex-shrink: 0; }
+    .city-score-input {
+      width: 36px; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 11px;
+      text-align: center; padding: 3px 4px; outline: none;
+    }
+    .city-score-input:focus { border-color: var(--accent); }
+    .city-dim-bar-wrap { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .city-dim-bar { height: 100%; border-radius: 2px; transition: width 0.2s; }
+    .city-visa { margin-top: 8px; padding: 5px 9px; background: rgba(245,166,35,0.07); border: 1px solid rgba(245,166,35,0.16); border-radius: var(--radius-sm); font-size: 10px; color: var(--warning); line-height: 1.5; }
+    .city-notes-textarea {
+      width: 100%; margin-top: 8px; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 11px;
+      font-family: inherit; padding: 5px 8px; outline: none; resize: none; min-height: 40px; line-height: 1.5;
+    }
+    .city-notes-textarea:focus { border-color: var(--accent); }
+    .city-notes-textarea::placeholder { color: var(--text-muted); }
+    .conf-slider {
+      -webkit-appearance: none; appearance: none; flex: 1; height: 3px;
+      background: linear-gradient(to right, var(--danger) 0%, var(--warning) 50%, var(--success) 100%);
+      border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .conf-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 12px;
+      border-radius: 50%; background: #fff; border: 2px solid var(--border-active); cursor: pointer;
+    }
+    .conf-val { font-size: 10px; color: var(--text-muted); min-width: 32px; text-align: right; }
+    .conf-val.conf-low { color: var(--warning); font-weight: 600; }
+    .city-card.low-confidence { border-color: var(--warning); }
+    .add-city-tile {
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center; min-height: 150px;
+      cursor: pointer; transition: all 0.15s; color: var(--text-muted); gap: 8px; font-size: 12px;
+    }
+    .add-city-tile:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+    /* ── History tab ── */
+    .finalize-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .finalize-input {
+      flex: 1; background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;
+      font-family: inherit; padding: 7px 10px; outline: none;
+    }
+    .finalize-input:focus { border-color: var(--accent); }
+    .finalize-input::placeholder { color: var(--text-muted); }
+    .snap-card {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 14px; margin-bottom: 9px;
+    }
+    .snap-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+    .snap-date { font-size: 10px; color: var(--text-muted); }
+    .snap-prios { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
+    .snap-ranking { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+    .snap-city-item { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+    .snap-rank-num { font-size: 10px; color: var(--text-muted); font-weight: 700; }
+    .empty-state { text-align: center; color: var(--text-muted); padding: 36px 20px; font-size: 12px; line-height: 1.7; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 6px 13px; border-radius: var(--radius-sm); border: none;
+      cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit;
+      transition: all 0.12s; white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-active); }
+    .btn-danger { background: rgba(224,85,85,0.1); color: var(--danger); border: 1px solid transparent; }
+    .btn-danger:hover { background: rgba(224,85,85,0.2); }
+    .btn-sm { padding: 3px 9px; font-size: 11px; }
+
+    /* ── Footer ── */
+    .app-footer {
+      padding: 8px 16px; background: var(--bg-surface); border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal {
+      background: var(--bg-elevated); border: 1px solid var(--border-active);
+      border-radius: var(--radius); padding: 22px; width: 340px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .modal h3 { font-size: 14px; font-weight: 600; }
+    .modal-input {
+      width: 100%; background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px;
+      font-family: inherit; padding: 8px 10px; outline: none;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">City <span>Decision</span></div>
+  <span class="save-status" id="saveStatus">All changes saved</span>
+</header>
+
+<div class="app-body">
+  <aside class="sidebar">
+    <div class="sidebar-head">Sessions <button class="btn-icon" onclick="App.newSession()">+</button></div>
+    <div class="session-list" id="sessionList"></div>
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost btn-sm" style="width:100%" onclick="App.newSession()">+ New Session</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="tab-bar">
+      <button class="tab-btn" data-tab="analysis"  onclick="App.switchTab(this)">Analysis</button>
+      <button class="tab-btn active" data-tab="strategies" onclick="App.switchTab(this)">Decision Coach</button>
+      <button class="tab-btn"        data-tab="framework" onclick="App.switchTab(this)">Framework</button>
+      <button class="tab-btn"        data-tab="compare"   onclick="App.switchTab(this)">Compare</button>
+      <button class="tab-btn"        data-tab="inbox"   onclick="App.switchTab(this)">Inbox</button>
+      <button class="tab-btn"        data-tab="review"   onclick="App.switchTab(this)">Review</button>
+      <button class="tab-btn"        data-tab="cities"    onclick="App.switchTab(this)">Cities</button>
+      <button class="tab-btn"        data-tab="history"   onclick="App.switchTab(this)">History</button>
+    </div>
+
+    <div class="tab-content active" id="tab-strategies">
+      <div style="margin-bottom:14px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">Decision Coach</div>
+        <div style="font-size:12px;color:var(--text-muted)">Simple view: what is workable, what is risky, and what to do next.</div>
+      </div>
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:180px 120px 120px 120px 1fr;gap:8px;align-items:end;">
+            <div>
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">Living Path</div>
+              <select id="decisionMode" class="input" onchange="App.updateStrategyConfig('decision_mode', this.value)">
+                <option value="multi_strategy_compare">Compare all</option>
+                <option value="single_base">Single-base only</option>
+                <option value="nomadic">Nomadic only</option>
+                <option value="hybrid">Hybrid only</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">Budget Ceiling / mo</div>
+              <input id="maxBurn" class="input" type="number" min="500" step="100" onchange="App.updateStrategyConfig('max_monthly_burn', this.value)">
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">Safety Floor</div>
+              <input id="safetyMin" class="input" type="number" min="1" max="10" onchange="App.updateStrategyConfig('safety_min', this.value)">
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">Stay Length (weeks)</div>
+              <input id="nomadBlockWeeks" class="input" type="number" min="2" max="12" onchange="App.updateStrategyConfig('nomad_block_weeks', this.value)">
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <label style="font-size:11px;color:var(--text-muted);display:flex;gap:4px;align-items:center;"><input id="legalRequired" type="checkbox" onchange="App.updateStrategyConfig('legal_required', this.checked)"> Must be legally workable</label>
+              <label style="font-size:11px;color:var(--text-muted);display:flex;gap:4px;align-items:center;"><input id="visaRequired" type="checkbox" onchange="App.updateStrategyConfig('visa_required', this.checked)"> Avoid visa friction</label>
+              <label style="font-size:11px;color:var(--text-muted);display:flex;gap:4px;align-items:center;">United days/mo: <input id="unitedDaysMin" style="width:46px" class="input" type="number" min="0" max="31" onchange="App.updateStrategyConfig('united_days_per_month_min', this.value)">-<input id="unitedDaysMax" style="width:46px" class="input" type="number" min="0" max="31" onchange="App.updateStrategyConfig('united_days_per_month_max', this.value)"></label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-header"><span class="card-title">Best Options Right Now</span></div>
+        <div class="card-body" id="strategyCandidates"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">What To Do Next</span></div>
+        <div class="card-body" id="strategyRoadmap"></div>
+      </div>
+    </div>
+
+    <!-- Analysis -->
+    <div class="tab-content" id="tab-analysis">
+      <div class="analysis-layout">
+        <div class="priorities-panel">
+          <div class="panel-title">Priorities</div>
+          <div class="panel-sub">Drag to reflect what actually matters to you. Rankings update live.</div>
+          <div id="prioritySliders"></div>
+          <hr class="divider">
+          <div class="section-label">Context</div>
+          <div class="choice-row">
+            <div class="choice-label">Current phase</div>
+            <div class="choice-options">
+              <button class="choice-btn" data-ctx="phase" data-val="grow"   onclick="App.setCtx(this)">Growing / ambitious</button>
+              <button class="choice-btn" data-ctx="phase" data-val="create" onclick="App.setCtx(this)">Creating / consolidating</button>
+            </div>
+          </div>
+          <div class="choice-row">
+            <div class="choice-label">Work travel frequency</div>
+            <div class="choice-options">
+              <button class="choice-btn" data-ctx="travel" data-val="frequent"   onclick="App.setCtx(this)">Frequent</button>
+              <button class="choice-btn" data-ctx="travel" data-val="occasional" onclick="App.setCtx(this)">Occasional</button>
+              <button class="choice-btn" data-ctx="travel" data-val="rare"       onclick="App.setCtx(this)">Rare</button>
+            </div>
+          </div>
+          <div class="choice-row">
+            <div class="choice-label">Moving situation</div>
+            <div class="choice-options">
+              <button class="choice-btn" data-ctx="moving" data-val="solo"      onclick="App.setCtx(this)">Fresh start</button>
+              <button class="choice-btn" data-ctx="moving" data-val="partner"   onclick="App.setCtx(this)">With partner</button>
+              <button class="choice-btn" data-ctx="moving" data-val="community" onclick="App.setCtx(this)">Toward community</button>
+            </div>
+          </div>
+          <div class="choice-row">
+            <div class="choice-label">Open thinking</div>
+            <textarea class="panel-textarea" id="contextNotes" rows="4"
+              placeholder="What's pulling you? What are you running from? What does the ideal Tuesday look like?"
+              oninput="App.saveNotes()"></textarea>
+          </div>
+        </div>
+
+        <div class="ranking-panel">
+          <div class="ranking-notice" id="rankingNotice"></div>
+          <div id="cityRankingList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Framework -->
+    <div class="tab-content" id="tab-framework">
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">Decision Science Frameworks</div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;max-width:660px">Four evidence-based tools that surface what pure logic misses — gut truth, regret risk, and hidden assumptions. The most useful signal is when gut and analysis disagree: that's where to dig.</div>
+      </div>
+      <div class="fw-grid">
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Gut Check</span></div>
+          <div class="card-body">
+            <div class="card-desc">You wake up tomorrow — the decision is made. Rate your visceral reaction to each city before your brain starts justifying.</div>
+            <div id="gutSliders"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Regret Minimisation — Bezos Framework</span></div>
+          <div class="card-body">
+            <div class="card-desc">You are 80. Looking back at this moment — how much would you regret not having chosen each city? High regret score = you probably want it more than you admit.</div>
+            <div id="regretSliders"></div>
+            <textarea class="panel-textarea" id="regretReflection" rows="3" style="margin-top:12px"
+              placeholder="What does 80-year-old you say about this choice? Write without filtering."
+              oninput="App.saveFramework('regretReflection', this.value)"></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Pre-Mortem — Worst Case</span></div>
+          <div class="card-body">
+            <div class="card-desc">Pick your current frontrunner. 18 months later — the move was a mistake. What specifically went wrong? Surfaces risks that optimism hides.</div>
+            <div class="choice-row" style="margin-bottom:10px">
+              <div class="choice-label">City to stress-test</div>
+              <div class="choice-options" id="premortCityBtns"></div>
+            </div>
+            <textarea class="panel-textarea" id="premortText" rows="5"
+              placeholder="Describe the failure concretely — finances collapsed, felt isolated, career stalled, wrong environment for making work, relationship strain, health issues..."
+              oninput="App.saveFramework('premortText', this.value)"></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">10 / 10 / 10 — Suzy Welch</span></div>
+          <div class="card-body">
+            <div class="card-desc">For your current top-ranked city. Decisions that feel bad at 10 minutes but good at 10 years are usually worth making.</div>
+            <div style="font-size:11px;color:var(--accent);margin-bottom:12px;font-weight:600" id="tenTenLabel"></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">In 10 minutes — gut feeling right now</div>
+            <textarea class="panel-textarea" id="ten10min" rows="2" placeholder="Excited? Relieved? Anxious? Flat?" oninput="App.saveFramework('ten10min',this.value)"></textarea>
+            <div style="font-size:11px;color:var(--text-muted);margin:8px 0 4px">In 10 months — daily life</div>
+            <textarea class="panel-textarea" id="ten10mo" rows="2" placeholder="What's a typical week like? What's working, what's hard?" oninput="App.saveFramework('ten10mo',this.value)"></textarea>
+            <div style="font-size:11px;color:var(--text-muted);margin:8px 0 4px">In 10 years — looking back</div>
+            <textarea class="panel-textarea" id="ten10yr" rows="2" placeholder="Was it the right call? What did it make possible?" oninput="App.saveFramework('ten10yr',this.value)"></textarea>
+          </div>
+        </div>
+
+        <div class="vs-block">
+          <div class="vs-block-title">Gut vs. Logic — Alignment Check</div>
+          <div id="vsTable"></div>
+          <div class="vs-footer">Agreement across all three = high confidence. A conflict on any axis means dig deeper — your gut may know something the numbers don't, or fear may be distorting your gut reading.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Compare -->
+    <div class="tab-content" id="tab-compare">
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">Pairwise Comparison</div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;max-width:660px">Sometimes the weighted ranking feels wrong. Force binary choices head-to-head to surface preferences the numbers miss. This is especially useful when two cities are close in score.</div>
+      </div>
+      <div class="compare-controls">
+        <select id="compareCityA" class="compare-select" onchange="App.renderCompare()">
+          <option value="">Select first city...</option>
+        </select>
+        <span class="compare-vs">vs</span>
+        <select id="compareCityB" class="compare-select" onchange="App.renderCompare()">
+          <option value="">Select second city...</option>
+        </select>
+      </div>
+      <div id="compareResults"></div>
+    </div>
+
+    <!-- Context -->
+    <div class="tab-content" id="tab-inbox">
+      <div class="ctx-header">
+        <div class="ctx-header-text">
+          <h3>Context Documents</h3>
+          <p>Paste voice transcripts, AI conversation exports, or stream-of-consciousness notes. These are reference material — bring them up when discussing with Claude Code or another AI.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="App.showAddDoc()">+ Add</button>
+      </div>
+
+      <div class="add-doc-form" id="addDocForm" style="display:none">
+        <div class="add-doc-row">
+          <input class="add-doc-input" id="newDocTitle" placeholder="Title (e.g. Voice note Feb 26, ChatGPT thread about PS)">
+          <select class="type-select" id="newDocType">
+            <option value="voice">Voice note</option>
+            <option value="chat">Chat transcript</option>
+            <option value="note">Written note</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <textarea class="doc-textarea" id="newDocText" rows="7"
+          placeholder="Paste transcript or notes here. Raw and unformatted is fine."></textarea>
+        <div class="add-doc-actions">
+          <button class="btn btn-primary btn-sm" onclick="App.addDoc()">Save</button>
+          <button class="btn btn-ghost btn-sm" onclick="App.hideAddDoc()">Cancel</button>
+          <div class="drop-zone" id="dropZone"
+            ondragover="event.preventDefault();this.classList.add('drag-over')"
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="App.handleDrop(event)">Drop a .txt file to import</div>
+        </div>
+      </div>
+
+      <div id="docList"></div>
+    </div>
+
+    <div class="tab-content" id="tab-review">
+      <div class="finalize-row">
+        <input class="finalize-input" id="reviewDecisions" placeholder="Weekly decisions (comma-separated)">
+        <button class="btn btn-primary btn-sm" onclick="App.saveWeeklyReview()">Save Weekly Snapshot</button>
+      </div>
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-header"><span class="card-title">Untriaged Snippets</span></div>
+        <div class="card-body" id="reviewUntriaged"></div>
+      </div>
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-header"><span class="card-title">Draft Evidence</span></div>
+        <div class="card-body" id="reviewDraftEvidence"></div>
+      </div>
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-header"><span class="card-title">Not Workable Right Now</span></div>
+        <div class="card-body" id="reviewRejectedStrategies"></div>
+      </div>
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-header"><span class="card-title">Evidence Coverage Gaps</span></div>
+        <div class="card-body" id="reviewCoverageGaps"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Weekly Reviews</span></div>
+        <div class="card-body" id="reviewHistory"></div>
+      </div>
+    </div>
+
+    <!-- Cities -->
+    <div class="tab-content" id="tab-cities">
+      <div style="margin-bottom:14px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:3px">City Profiles</div>
+        <div style="font-size:12px;color:var(--text-muted)">Score 1–10 per dimension. For cost and studio: 10 = very cheap/accessible. Higher is always better on each axis.</div>
+      </div>
+      <div class="cities-grid" id="citiesGrid"></div>
+    </div>
+
+    <!-- History -->
+    <div class="tab-content" id="tab-history">
+      <div class="finalize-row">
+        <input class="finalize-input" id="finalizeNote" placeholder="Label this snapshot — e.g. First pass, After talking to Marcus, Post-Barcelona visit">
+        <button class="btn btn-primary btn-sm" onclick="App.saveSnapshot()">Save Snapshot</button>
+      </div>
+      <div id="snapshotList"></div>
+    </div>
+
+  </div>
+</div>
+
+<footer class="app-footer">
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-ghost btn-sm" onclick="App.exportJSON()">Export</button>
+    <button class="btn btn-ghost btn-sm" onclick="App.importJSON()">Import</button>
+  </div>
+  <span style="font-size:11px;color:var(--text-muted)" id="footerLabel"></span>
+</footer>
+
+<div class="modal-backdrop" id="modal" style="display:none">
+  <div class="modal">
+    <h3 id="modalTitle">New Session</h3>
+    <input class="modal-input" id="modalInput" placeholder="Session name">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modalConfirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'city-decision-v5';
+const LEGACY_STORAGE_KEY = 'city-decision-v4';
+const SCHEMA_REV = 3;
+
+const DIMS = [
+  { id:'cost',    label:'Keeping costs low'       },
+  { id:'art',     label:'Art / gallery scene'     },
+  { id:'flights', label:'Flight access'           },
+  { id:'queer',   label:'Queer community'         },
+  { id:'energy',  label:'Urban energy'            },
+  { id:'nature',  label:'Nature & outdoor space'  },
+  { id:'studio',  label:'Affordable studio space' },
+];
+
+const DIM_COLORS = {
+  cost:'#4caf7d', art:'#fa6d8e', flights:'#6db3fa',
+  queer:'#c06dfa', energy:'#f5a623', nature:'#56c49a', studio:'#7c6dfa'
+};
+
+const CITY_MONTHLY_BURN = {
+  'palm-springs': 3600,
+  'los-angeles': 5600,
+  'nyc-hoboken': 6200,
+  'san-francisco': 6100,
+  'toronto': 4300,
+  'barcelona': 3400,
+  'mexico-city': 3000,
+  'austin': 4200,
+};
+
+
+
+function fitLabel(pct) {
+  if (pct >= 78) return { label:'Strong fit', cls:'fit-strong' };
+  if (pct >= 63) return { label:'Good fit',   cls:'fit-good' };
+  if (pct >= 48) return { label:'Moderate',   cls:'fit-mod' };
+  return              { label:'Low fit',     cls:'fit-weak' };
+}
+
+function gutLabel(val) {
+  if (!val || val === 5) return { text:'Not rated', cls:'neutral' };
+  if (val >= 9)  return { text:'Excited',       cls:'excited' };
+  if (val >= 7)  return { text:'Hopeful',        cls:'hopeful' };
+  if (val >= 5)  return { text:'Neutral',         cls:'neutral' };
+  if (val >= 3)  return { text:'Apprehensive',   cls:'apprehensive' };
+  return               { text:'Dreading it',    cls:'dreading' };
+}
+
+function defaultCities() {
+  return [
+    { id:'palm-springs', name:'Palm Springs', visa:null, confidence:7, safety:7, monthly_burn:3600,
+      profile:{ cost:8, art:5, flights:4, queer:7, energy:3, nature:7, studio:8 },
+      notes:'PSP airport is small — most routes connect via LAX (2.5h drive). Art Week and a real collector base, but a limited market overall. Tight-knit queer community, older demographic, seasonal. Cheap warehouse studios. Intense summer heat.' },
+    { id:'los-angeles', name:'Los Angeles', visa:null, confidence:8, safety:6, monthly_burn:5600,
+      profile:{ cost:2, art:9, flights:10, queer:8, energy:9, nature:4, studio:2 },
+      notes:'World-class gallery scene, institutions, collectors. LAX is a top global hub. Large, diverse, year-round queer community. Studio space is expensive and competitive. If career growth is the primary driver, this is the obvious choice.' },
+    { id:'nyc-hoboken', name:'NYC / Hoboken', visa:null, confidence:8, safety:6, monthly_burn:6200,
+      profile:{ cost:1, art:10, flights:10, queer:9, energy:10, nature:2, studio:1 },
+      notes:"World's art capital. JFK/EWR/LGA give unmatched global reach. Hoboken/Jersey City is significantly cheaper than Manhattan with PATH access in minutes. Studio space is nearly impossible without serious income. Exhausting and electric in equal measure." },
+    { id:'san-francisco', name:'San Francisco', visa:null, confidence:7, safety:6, monthly_burn:6100,
+      profile:{ cost:1, art:8, flights:9, queer:9, energy:7, nature:7, studio:1 },
+      notes:'Historic queer capital of the US. Strong gallery scene, active collector base. SFO is a world-class hub. Cost of living is brutal — often worse than NYC. Studio space nearly impossible to afford. Tech monoculture can feel alienating for artists.' },
+    { id:'toronto', name:'Toronto', visa:null, confidence:9, safety:8, monthly_burn:4300,
+      profile:{ cost:4, art:7, flights:9, queer:9, energy:7, nature:6, studio:5 },
+      notes:"You're Canadian — universal healthcare removes major financial anxiety. YYZ is a strong international hub. Very multicultural, strong queer community (Church-Wellesley). Solid art scene, not at NYC/LA scale. Winter is real: grey Dec-Mar. No US tax complications." },
+    { id:'barcelona', name:'Barcelona', visa:'Non-EU: Spain Digital Nomad Visa required. Income threshold approx. €2,334/mo. Apply from home country before moving.', confidence:6, safety:7, monthly_burn:3400,
+      profile:{ cost:7, art:8, flights:5, queer:9, energy:9, nature:6, studio:7 },
+      notes:"Eixample is one of Europe's great queer neighborhoods. Strong contemporary art scene — MACBA, Fundacio Miro, active galleries. Much more affordable than equivalent US cities for rent and studios. BCN airport is excellent within Europe; transatlantic flights add cost and friction. English widely spoken in creative circles." },
+    { id:'mexico-city', name:'Mexico City', visa:'Tourist visa allows 180 days. Long-term requires Temporary Resident visa. Research your specific situation carefully.', confidence:5, safety:5, monthly_burn:3000,
+      profile:{ cost:9, art:8, flights:6, queer:6, energy:9, nature:5, studio:9 },
+      notes:'Extraordinary art scene — Museo Tamayo, MUAC, thriving gallery district. Exceptionally affordable: good lifestyle for $1,200-1,800/mo. MEX airport has solid US connections. Roma, Condesa, Polanco are safe and expat-friendly. Queer community is active in Zona Rosa; broader cultural context is more complex. Time zone aligns well with US clients.' },
+    { id:'austin', name:'Austin, TX', visa:null, confidence:6, safety:6, monthly_burn:4200,
+      profile:{ cost:5, art:6, flights:8, queer:5, energy:7, nature:7, studio:6 },
+      notes:'No state income tax. AUS airport has good connections. Texas Hill Country and outdoor access is genuinely excellent. The city is liberal but Texas state politics around LGBTQ+ rights are actively hostile — a real quality-of-life consideration, not abstract. Growing creative scene, East Austin has warehouse studios.' },
+  ];
+}
+
+function defaultPriorities() { return { cost:5, art:5, flights:5, queer:5, energy:5, nature:5, studio:5 }; }
+function defaultFrameworks()  { return { gutScores:{}, regretScores:{}, regretReflection:'', premortCity:null, premortText:'', ten10min:'', ten10mo:'', ten10yr:'', pairwiseChoices:{} }; }
+
+function normalizeSnippet(raw) {
+  return {
+    id: raw?.id || uid(),
+    text: raw?.text || '',
+    tags: Array.isArray(raw?.tags) ? raw.tags : [],
+    links: Array.isArray(raw?.links) ? raw.links.map(l => ({
+      entity_type: l?.entity_type || 'city',
+      entity_id: l?.entity_id || '',
+      criterion_id: l?.criterion_id || 'cost',
+    })) : [],
+    actionability: Math.max(1, Math.min(3, parseInt(raw?.actionability || 1) || 1)),
+  };
+}
+
+function splitSnippets(text) {
+  return String(text || '').split(/\n\s*\n/g).map(s => s.trim()).filter(Boolean).map(t => normalizeSnippet({ text: t }));
+}
+
+function normalizeContextDoc(raw) {
+  return {
+    id: raw?.id || uid(),
+    title: raw?.title || 'Untitled',
+    type: raw?.type || 'other',
+    text: raw?.text || '',
+    date: raw?.date || today(),
+    source_file: raw?.source_file || '',
+    snippets: Array.isArray(raw?.snippets) ? raw.snippets.map(normalizeSnippet) : splitSnippets(raw?.text || ''),
+  };
+}
+
+function normalizeEvidence(raw) {
+  const e = {
+    id: raw?.id || uid(),
+    entity_type: raw?.entity_type || 'city',
+    entity_id: raw?.entity_id || '',
+    criterion_id: raw?.criterion_id || 'cost',
+    claim: raw?.claim || '',
+    source_label: raw?.source_label || '',
+    source_url: raw?.source_url || '',
+    observed_at: raw?.observed_at || '',
+    confidence: Math.max(0, Math.min(10, parseInt(raw?.confidence || 0) || 0)),
+    strength: Math.max(1, Math.min(3, parseInt(raw?.strength || 1) || 1)),
+    status: raw?.status || 'rejected',
+    derived_from_doc_id: raw?.derived_from_doc_id || '',
+    derived_from_snippet_id: raw?.derived_from_snippet_id || '',
+  };
+  e.status = evidenceStatus(e);
+  return e;
+}
+
+function normalizeWeeklyReview(raw) {
+  return {
+    id: raw?.id || uid(),
+    week_of: raw?.week_of || startOfWeekISO(),
+    decisions: Array.isArray(raw?.decisions) ? raw.decisions : [],
+    top_focus: Array.isArray(raw?.top_focus) ? raw.top_focus : [],
+    open_questions: Array.isArray(raw?.open_questions) ? raw.open_questions : [],
+    snapshot_ref: raw?.snapshot_ref || '',
+  };
+}
+
+function evidenceStatus(e) {
+  if (!e.claim || !e.source_label || !e.observed_at || !e.confidence) return 'rejected';
+  const dt = new Date(e.observed_at);
+  if (Number.isNaN(dt.getTime())) return 'rejected';
+  const ageDays = (Date.now() - dt.getTime()) / (1000 * 60 * 60 * 24);
+  if (ageDays > 120) return 'stale';
+  return 'active';
+}
+
+function evidenceWeight(e) {
+  const status = evidenceStatus(e);
+  if (status === 'rejected') return 0;
+  const base = (e.strength || 1) * ((e.confidence || 1) / 10);
+  return status === 'stale' ? base * 0.5 : base;
+}
+
+function parseMarkdownEvidence(text) {
+  const blocks = String(text || '').split(/^##\s+Decision Evidence\s*$/gim).map(s => s.trim()).filter(Boolean);
+  const parsed = [];
+  const invalid = [];
+  blocks.forEach(block => {
+    const type = (block.match(/type:\s*(.+)/i)?.[1] || '').trim();
+    const id = (block.match(/id:\s*(.+)/i)?.[1] || '').trim();
+    const criterion = (block.match(/criterion:\s*(.+)/i)?.[1] || '').trim();
+    const claim = (block.match(/###\s*Claim\s*([\s\S]*?)###\s*Source/i)?.[1] || '').trim();
+    const label = (block.match(/label:\s*(.+)/i)?.[1] || '').trim();
+    const url = (block.match(/url:\s*(.+)/i)?.[1] || '').trim();
+    const observedAt = (block.match(/observed_at:\s*(.+)/i)?.[1] || '').trim();
+    const confidence = parseInt((block.match(/confidence:\s*(.+)/i)?.[1] || '').trim()) || 0;
+    const strength = parseInt((block.match(/strength:\s*(.+)/i)?.[1] || '').trim()) || 1;
+    const item = normalizeEvidence({
+      entity_type: type,
+      entity_id: id,
+      criterion_id: criterion,
+      claim,
+      source_label: label,
+      source_url: url,
+      observed_at: observedAt,
+      confidence,
+      strength,
+    });
+    if (!type || !id || !criterion || !claim) invalid.push({ item, reason: 'Missing required entity/criterion/claim fields.' });
+    else parsed.push(item);
+  });
+  return { parsed, invalid };
+}
+
+function ensureSessionSchema(s) {
+  if (!s) return;
+  s.schema_rev = SCHEMA_REV;
+  if (!Array.isArray(s.context_docs)) {
+    s.context_docs = Array.isArray(s.docs) ? s.docs.map(d => normalizeContextDoc(d)) : [];
+  } else {
+    s.context_docs = s.context_docs.map(normalizeContextDoc);
+  }
+  s.evidence_items = Array.isArray(s.evidence_items) ? s.evidence_items.map(normalizeEvidence) : [];
+  s.weekly_reviews = Array.isArray(s.weekly_reviews) ? s.weekly_reviews.map(normalizeWeeklyReview) : [];
+  if (!Array.isArray(s.evidence_import_errors)) s.evidence_import_errors = [];
+  if (!s.last_review_at) s.last_review_at = today();
+  if (!s.decision_mode) s.decision_mode = 'multi_strategy_compare';
+  if (!s.hard_constraints) s.hard_constraints = { max_monthly_burn: 5200, safety_min: 6, legal_required: true, visa_required: true };
+  if (!s.travel_profile) s.travel_profile = { united_days_per_month_min: 7, united_days_per_month_max: 14, nomad_block_weeks: 4 };
+  if (!Array.isArray(s.strategy_candidates)) s.strategy_candidates = [];
+  if (!s.recommendation_pack) s.recommendation_pack = null;
+  if (!s.evidence_coverage) s.evidence_coverage = {};
+  s.cities = (s.cities || []).map(c => ({
+    ...c,
+    safety: Math.max(1, Math.min(10, parseInt(c.safety || 6) || 6)),
+    monthly_burn: Math.max(500, parseInt(c.monthly_burn || CITY_MONTHLY_BURN[c.id] || 4200) || 4200),
+  }));
+}
+
+function newSession(name) {
+  return { id:uid(), name:name||'My Decision', created:today(),
+    cities:defaultCities(), priorities:defaultPriorities(), ctx:{},
+    notes:'', frameworks:defaultFrameworks(), docs:[], history:[],
+    schema_rev: SCHEMA_REV, context_docs: [], evidence_items: [], weekly_reviews: [], evidence_import_errors: [], last_review_at: today(),
+    decision_mode: 'multi_strategy_compare',
+    hard_constraints: { max_monthly_burn: 5200, safety_min: 6, legal_required: true, visa_required: true },
+    travel_profile: { united_days_per_month_min: 7, united_days_per_month_max: 14, nomad_block_weeks: 4 },
+    strategy_candidates: [],
+    recommendation_pack: null,
+    evidence_coverage: {},
+  };
+}
+
+let state = { sessions:[], active:null };
+
+/* ── Scoring ── */
+function computeScore(city, priorities, s, opts) {
+  opts = opts || {};
+  const criteriaBoost = {};
+  if (!opts.ignoreEvidence && s?.evidence_items) {
+    s.evidence_items.forEach(e => {
+      if (e.entity_type !== 'city' || e.entity_id !== city.id) return;
+      const w = evidenceWeight(e);
+      if (!w) return;
+      criteriaBoost[e.criterion_id] = (criteriaBoost[e.criterion_id] || 0) + w;
+    });
+  }
+  let score = 0, max = 0;
+  DIMS.forEach(d => {
+    const w = priorities[d.id]||0;
+    const boost = Math.min(criteriaBoost[d.id] || 0, 2.5) * 0.6;
+    score += w * Math.min(10, (city.profile[d.id]||0) + boost);
+    max += w*10;
+  });
+  return max > 0 ? Math.round((score/max)*100) : 0;
+}
+
+function getRanked(s) {
+  return [...s.cities].map(c => {
+    const score = computeScore(c, s.priorities, s);
+    const base = computeScore(c, s.priorities, s, { ignoreEvidence: true });
+    const activeEvidence = (s.evidence_items || []).filter(e => e.entity_type === 'city' && e.entity_id === c.id && evidenceStatus(e) === 'active').length;
+    const computedConfidence = Math.max(1, Math.min(10, Math.round((c.confidence || 5) + Math.min(2, activeEvidence / 3))));
+    return { ...c, score, evidence_delta: score - base, computed_confidence: computedConfidence };
+  }).sort((a,b) => b.score - a.score);
+}
+
+function topEvidenceSummary(s, cityId) {
+  const items = (s?.evidence_items || [])
+    .filter(e => e.entity_type === 'city' && e.entity_id === cityId && evidenceStatus(e) !== 'rejected')
+    .sort((a,b) => evidenceWeight(b) - evidenceWeight(a))
+    .slice(0, 2);
+  if (!items.length) return '';
+  return ` Evidence: ${items.map(i => i.claim.slice(0, 70)).join(' | ')}.`;
+}
+
+function cityMonthlyBurn(city) {
+  if (city && city.monthly_burn) return city.monthly_burn;
+  return CITY_MONTHLY_BURN[city?.id] || 4200;
+}
+
+function cityLegalOk(city, constraints) {
+  if (!constraints.legal_required) return true;
+  if (constraints.visa_required && city.visa) return false;
+  return true;
+}
+
+function strategyEvidenceCoverage(s, cityIds, criteria) {
+  const active = (s.evidence_items || []).filter(e => evidenceStatus(e) === 'active' && e.entity_type === 'city' && cityIds.includes(e.entity_id));
+  const need = cityIds.length * criteria.length;
+  const have = active.filter(e => criteria.includes(e.criterion_id)).length;
+  return need > 0 ? have / need : 0;
+}
+
+function evaluateStrategyCandidate(s, mode, anchorCity, rotationCities) {
+  const constraints = s.hard_constraints;
+  const travel = s.travel_profile;
+  const cityIds = [anchorCity.id, ...rotationCities.map(c => c.id)];
+  const allCities = [anchorCity, ...rotationCities];
+  const legal_ok = allCities.every(c => cityLegalOk(c, constraints));
+  const safety_ok = allCities.every(c => (c.safety || 6) >= constraints.safety_min);
+  const blockWeeks = Math.max(2, parseInt(travel.nomad_block_weeks || 4) || 4);
+  const transitionsPerQuarter = mode === 'single_base' ? 0 : Math.max(1, Math.round(12 / blockWeeks));
+  const avgUnitedDays = ((travel.united_days_per_month_min || 0) + (travel.united_days_per_month_max || 0)) / 2;
+  const travelCost = avgUnitedDays * 120;
+  const baseBurn = allCities.reduce((n, c) => n + cityMonthlyBurn(c), 0) / allCities.length;
+  let monthly_burn_est = baseBurn + travelCost;
+  if (mode === 'nomadic') monthly_burn_est += transitionsPerQuarter * 220;
+  if (mode === 'hybrid') monthly_burn_est += transitionsPerQuarter * 140;
+  const burn_ok = monthly_burn_est <= (constraints.max_monthly_burn || 99999);
+  const feasible = legal_ok && safety_ok && burn_ok;
+
+  const ranked = getRanked(s);
+  const scoreByCity = Object.fromEntries(ranked.map(c => [c.id, c.score]));
+  const baseExpected = allCities.reduce((n, c) => n + (scoreByCity[c.id] || 0), 0) / allCities.length;
+  const travelFit = allCities.reduce((n, c) => n + (c.profile.flights || 5), 0) / allCities.length;
+  const recurringBonus = mode !== 'single_base' ? 4 : 0;
+  const transitionPenalty = transitionsPerQuarter * (mode === 'nomadic' ? 2.6 : mode === 'hybrid' ? 1.5 : 0);
+  const coverage = strategyEvidenceCoverage(s, cityIds, ['cost','flights','queer','art','studio']);
+  const staleCount = (s.evidence_items || []).filter(e => e.entity_type === 'city' && cityIds.includes(e.entity_id) && evidenceStatus(e) === 'stale').length;
+  const uncertainty = Math.min(100, (1 - coverage) * 55 + staleCount * 2.5 + (mode === 'nomadic' ? 8 : mode === 'hybrid' ? 4 : 2));
+  const expected = Math.min(100, baseExpected + (travelFit - 5) * 2 + recurringBonus);
+  const robustness = Math.max(0, Math.min(...allCities.map(c => scoreByCity[c.id] || 0)) - transitionPenalty);
+  const downside = Math.min(100, uncertainty + transitionPenalty * 3 + (!burn_ok ? 20 : 0) + (!safety_ok ? 25 : 0) + (!legal_ok ? 35 : 0));
+  const total = Math.max(0, Math.min(100, 0.35 * expected + 0.35 * robustness - 0.30 * downside));
+  const reasons = [];
+  if (!legal_ok) reasons.push('Fails legal/visa gate');
+  if (!safety_ok) reasons.push('Fails safety minimum');
+  if (!burn_ok) reasons.push('Exceeds monthly burn cap');
+  if (coverage < 0.35) reasons.push('Evidence coverage gap is high');
+  if (mode === 'nomadic') reasons.push(`Transition load is ${transitionsPerQuarter} moves/quarter`);
+  if (mode === 'hybrid') reasons.push('Anchor+rotation reduces transition risk vs full nomad');
+  if (mode === 'single_base') reasons.push('Most stable downside profile');
+
+  return {
+    id: `${mode}:${anchorCity.id}`,
+    mode,
+    anchor_city_id: anchorCity.id,
+    rotation_city_ids: rotationCities.map(c => c.id),
+    monthly_burn_est: Math.round(monthly_burn_est),
+    legal_ok,
+    safety_ok,
+    feasible,
+    scores: {
+      expected: Math.round(expected),
+      downside: Math.round(downside),
+      robustness: Math.round(robustness),
+      uncertainty: Math.round(uncertainty),
+      total: Math.round(total),
+    },
+    rationale: reasons,
+    coverage: Number(coverage.toFixed(2)),
+  };
+}
+
+function buildStrategyCandidates(s) {
+  const ranked = getRanked(s);
+  const top = ranked.slice(0, 5);
+  const out = [];
+  top.forEach(anchor => {
+    out.push(evaluateStrategyCandidate(s, 'single_base', anchor, []));
+    const rotation = top.filter(c => c.id !== anchor.id).slice(0, 2);
+    out.push(evaluateStrategyCandidate(s, 'nomadic', anchor, rotation));
+    out.push(evaluateStrategyCandidate(s, 'hybrid', anchor, rotation.slice(0, 1)));
+  });
+  return out.sort((a, b) => b.scores.total - a.scores.total);
+}
+
+function buildRecommendationPack(s) {
+  const feasible = (s.strategy_candidates || []).filter(c => c.feasible);
+  const best = feasible[0] || s.strategy_candidates[0] || null;
+  const fallback = feasible[1] || null;
+  if (!best) return null;
+  const cityLabel = s.cities.find(c => c.id === best.anchor_city_id)?.name || best.anchor_city_id;
+  const fallbackLabel = fallback ? (s.cities.find(c => c.id === fallback.anchor_city_id)?.name || fallback.anchor_city_id) : 'none';
+  return {
+    generated_at: today(),
+    selected_strategy_id: best.id,
+    fallback_strategy_id: fallback ? fallback.id : '',
+    phase_90d: `Run ${best.mode} centered on ${cityLabel}. Weekly review + evidence updates required.`,
+    phase_6mo: `Assess burn, wellbeing, and output; continue if robust score stays >= ${best.scores.total - 8}. Fallback: ${fallbackLabel}.`,
+    phase_12mo: `Commit if downside remains contained; otherwise pivot to fallback strategy or reset candidate set.`,
+    switch_triggers: [
+      `Monthly burn > ${s.hard_constraints.max_monthly_burn} for 2 consecutive months`,
+      'Safety or legal feasibility changes materially',
+      'Robustness drops by 12+ points over two reviews',
+    ],
+    kill_criteria: [
+      'Evidence coverage remains < 30% for 6 weeks',
+      'Transition fatigue causes sustained productivity decline',
+      'Travel friction repeatedly breaks required schedule',
+    ],
+    confidence_note: best.coverage < 0.4 ? 'Low confidence: evidence coverage is thin.' : 'Moderate confidence with current evidence coverage.',
+  };
+}
+
+/* ── Verdict (specific, priority-aware) ── */
+function verdict(city, priorities, rank, ctx, s) {
+  const ev = topEvidenceSummary(s, city.id);
+  const allEqual = DIMS.every(d => priorities[d.id] === 5);
+  if (allEqual) {
+    if (rank === 0) return 'Highest average score across all dimensions. Set your priorities to see a more meaningful ranking.' + ev;
+    return 'Comparable average city score. Set priorities to see how this shifts.' + ev;
+  }
+
+  const sorted = DIMS.map(d => ({ ...d, prio:priorities[d.id]||0, val:city.profile[d.id]||0 }))
+    .sort((a,b) => b.prio - a.prio);
+  const topPrios   = sorted.filter(d => d.prio >= 7);
+  const strongOn   = topPrios.filter(d => d.val >= 7);
+  const weakOn     = topPrios.filter(d => d.val <= 4);
+  const neutral    = topPrios.filter(d => d.val >= 5 && d.val < 7);
+
+  // Context extras
+  let extra = '';
+  if (ctx?.travel === 'frequent' && city.profile.flights <= 4) extra = ' The limited flight access is a real friction point given how often you travel.';
+  else if (ctx?.travel === 'frequent' && city.profile.flights >= 8) extra = ' Strong flight access aligns with your travel frequency.';
+  if (ctx?.phase === 'create' && city.profile.cost >= 7 && city.profile.studio >= 7) extra += ' The affordable cost and studio access suit a consolidation/creation phase well.';
+  if (ctx?.phase === 'grow'   && city.profile.art  >= 8) extra += ' The major art scene aligns with a growth-oriented phase.';
+
+  if (rank === 0) {
+    if (strongOn.length >= 2) return `Best match. Performs strongly on ${strongOn.slice(0,2).map(d=>d.label.toLowerCase()).join(' and ')}, your top two priorities.${extra}${ev}`;
+    if (strongOn.length === 1) return `Best overall fit. Strong on ${strongOn[0].label.toLowerCase()}, your highest priority.${extra}${ev}`;
+    if (weakOn.length === 0)   return `Best overall fit — competitive across all of your priorities.${extra}${ev}`;
+    return `Best overall fit despite a gap on ${weakOn.slice(0,1).map(d=>d.label.toLowerCase()).join('')}.${extra}${ev}`;
+  }
+
+  if (weakOn.length >= 2) {
+    const names = weakOn.slice(0,2).map(d=>d.label.toLowerCase()).join(' and ');
+    return `Underperforms on ${names}, both high priorities for you.${extra}${ev}`;
+  }
+  if (weakOn.length === 1 && strongOn.length >= 1) {
+    return `Strong on ${strongOn.slice(0,1).map(d=>d.label.toLowerCase()).join('')}, but weak on ${weakOn[0].label.toLowerCase()}, which you care about.${extra}${ev}`;
+  }
+  if (strongOn.length >= 2) {
+    return `Solid on ${strongOn.slice(0,2).map(d=>d.label.toLowerCase()).join(' and ')}, which matter to you.${extra}${ev}`;
+  }
+  if (ctx?.travel === 'frequent' && city.profile.flights <= 4) return `Limited flight access is a problem given how often you travel.${extra}${ev}`;
+  return rank <= 2
+    ? `Competitive across most of your priorities.${extra}${ev}`
+    : `Lower overall fit with your current priorities.${extra}${ev}`;
+}
+
+/* ── App ── */
+window.App = {
+
+  init() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { try { state = JSON.parse(raw); } catch(e) {} }
+    else {
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) { try { state = JSON.parse(legacy); } catch(e) {} }
+    }
+    if (!state.sessions?.length) { const s = newSession('Where to live?'); state.sessions=[s]; state.active=s.id; }
+    if (!state.active) state.active = state.sessions[0].id;
+    state.sessions.forEach(s => {
+      if (!s.frameworks) s.frameworks = defaultFrameworks();
+      if (!s.docs) s.docs = [];
+      if (!s.ctx) s.ctx = {};
+      ensureSessionSchema(s);
+    });
+    this.render();
+  },
+
+  save() {
+    state.sessions.forEach(ensureSessionSchema);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const el = document.getElementById('saveStatus');
+    el.textContent = 'Saved'; el.className = 'save-status saved';
+    clearTimeout(App._t);
+    App._t = setTimeout(() => { el.textContent = 'All changes saved'; el.className = 'save-status'; }, 1800);
+  },
+
+  get() { return state.sessions.find(s => s.id === state.active); },
+
+  render() {
+    const s = this.get();
+    if (s) {
+      s.strategy_candidates = buildStrategyCandidates(s);
+      s.recommendation_pack = buildRecommendationPack(s);
+      s.evidence_coverage = Object.fromEntries((s.strategy_candidates || []).map(c => [c.id, c.coverage]));
+    }
+    this.renderSidebar();
+    this.renderAnalysis();
+    this.renderStrategies();
+    this.renderFramework();
+    this.renderCompare();
+    this.renderInbox();
+    this.renderReview();
+    this.renderCities();
+    this.renderHistory();
+    document.getElementById('footerLabel').textContent = `${s?.name || ''} | schema v${s?.schema_rev || 1}`;
+  },
+
+  renderStrategies() {
+    const s = this.get(); if (!s) return;
+    document.getElementById('decisionMode').value = s.decision_mode || 'multi_strategy_compare';
+    document.getElementById('maxBurn').value = s.hard_constraints.max_monthly_burn;
+    document.getElementById('safetyMin').value = s.hard_constraints.safety_min;
+    document.getElementById('nomadBlockWeeks').value = s.travel_profile.nomad_block_weeks;
+    document.getElementById('legalRequired').checked = !!s.hard_constraints.legal_required;
+    document.getElementById('visaRequired').checked = !!s.hard_constraints.visa_required;
+    document.getElementById('unitedDaysMin').value = s.travel_profile.united_days_per_month_min;
+    document.getElementById('unitedDaysMax').value = s.travel_profile.united_days_per_month_max;
+
+    const mode = s.decision_mode || 'multi_strategy_compare';
+    const visible = (s.strategy_candidates || []).filter(c => mode === 'multi_strategy_compare' ? true : c.mode === mode);
+    const feasible = visible.filter(c => c.feasible);
+    const rejected = visible.filter(c => !c.feasible);
+    const top = (feasible.length ? feasible : visible).slice(0, 3);
+    const friendlyMode = m => m === 'single_base' ? 'Single-base' : m === 'nomadic' ? 'Nomadic chapter' : 'Hybrid';
+    const whyFits = c => {
+      if (c.mode === 'single_base') return 'Most stable and easiest to execute with low decision fatigue.';
+      if (c.mode === 'nomadic') return 'Highest exploration upside if you can handle frequent transitions.';
+      return 'Balanced path: stability from a base with variety from rotation cities.';
+    };
+    const riskNote = c => {
+      if (!c.feasible) return (c.rationale || []).slice(0, 2).join(' | ') || 'Blocked by your current limits.';
+      if (c.scores.uncertainty >= 50) return 'Uncertainty is high. Gather more evidence before committing long-term.';
+      if (c.scores.downside >= 45) return 'Downside risk is elevated. Keep a fallback ready.';
+      return 'Risk looks manageable with weekly check-ins.';
+    };
+    document.getElementById('strategyCandidates').innerHTML = `
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Workable now: ${feasible.length} | Not workable now: ${rejected.length}</div>
+      ${top.map((c, idx) => {
+        const anchor = s.cities.find(x => x.id === c.anchor_city_id);
+        const rot = c.rotation_city_ids.map(id => s.cities.find(x => x.id === id)?.name || id).join(', ');
+        return `<div style="padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;${c.feasible?'':'opacity:0.65;'}">
+          <div style="display:flex;justify-content:space-between;gap:8px;">
+            <strong>${idx + 1}. ${friendlyMode(c.mode)} · ${esc(anchor?.name || c.anchor_city_id)}</strong>
+            <span style="font-size:11px;color:${c.feasible?'var(--success)':'var(--danger)'}">${c.feasible?'workable':'not workable'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Rotation: ${esc(rot || 'none')} | Est. burn: $${c.monthly_burn_est}/mo</div>
+          <div style="font-size:11px;margin-top:4px;"><strong>Why this fits:</strong> ${esc(whyFits(c))}</div>
+          <div style="font-size:11px;margin-top:4px;color:var(--warning);"><strong>Watch-out:</strong> ${esc(riskNote(c))}</div>
+        </div>`;
+      }).join('')}
+    `;
+
+    const rp = s.recommendation_pack;
+    document.getElementById('strategyRoadmap').innerHTML = rp ? `
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Generated ${rp.generated_at}</div>
+      <div style="margin-bottom:6px;"><strong>Now (next 90 days):</strong> ${esc(rp.phase_90d)}</div>
+      <div style="margin-bottom:6px;"><strong>Then (next 6 months):</strong> ${esc(rp.phase_6mo)}</div>
+      <div style="margin-bottom:6px;"><strong>Later (12 months):</strong> ${esc(rp.phase_12mo)}</div>
+      <div style="margin-bottom:6px;"><strong>Re-check if:</strong> ${rp.switch_triggers.map(esc).join(' | ')}</div>
+      <div style="margin-bottom:6px;"><strong>Stop this path if:</strong> ${rp.kill_criteria.map(esc).join(' | ')}</div>
+      <div style="font-size:11px;color:var(--warning);">${esc(rp.confidence_note)}</div>
+    ` : '<div class="empty-state">No recommendation generated yet.</div>';
+  },
+
+  updateStrategyConfig(key, val) {
+    const s = this.get(); if (!s) return;
+    if (key === 'decision_mode') s.decision_mode = val;
+    else if (key === 'max_monthly_burn') s.hard_constraints.max_monthly_burn = parseInt(val) || s.hard_constraints.max_monthly_burn;
+    else if (key === 'safety_min') s.hard_constraints.safety_min = Math.max(1, Math.min(10, parseInt(val) || s.hard_constraints.safety_min));
+    else if (key === 'legal_required') s.hard_constraints.legal_required = !!val;
+    else if (key === 'visa_required') s.hard_constraints.visa_required = !!val;
+    else if (key === 'nomad_block_weeks') s.travel_profile.nomad_block_weeks = Math.max(2, parseInt(val) || s.travel_profile.nomad_block_weeks);
+    else if (key === 'united_days_per_month_min') s.travel_profile.united_days_per_month_min = Math.max(0, parseInt(val) || 0);
+    else if (key === 'united_days_per_month_max') s.travel_profile.united_days_per_month_max = Math.max(0, parseInt(val) || 0);
+    this.save();
+    this.render();
+  },
+
+  recomputeAfterDataChange() {
+    this.save();
+    this.renderRanking();
+    this.renderStrategies();
+    this.renderReview();
+    this.renderHistory();
+  },
+
+  /* ── Sidebar ── */
+  renderSidebar() {
+    document.getElementById('sessionList').innerHTML = state.sessions.map(s => `
+      <div class="session-item ${s.id===state.active?'active':''}" onclick="App.switchSession('${s.id}')">
+        <div class="session-item-title">${esc(s.name)}</div>
+        <div class="session-item-meta">${s.created} · ${s.history.length} snapshot${s.history.length!==1?'s':''}</div>
+      </div>`).join('');
+  },
+
+  switchSession(id) { state.active=id; this.save(); this.render(); },
+
+  newSession() {
+    document.getElementById('modalTitle').textContent = 'New Session';
+    document.getElementById('modalInput').value = '';
+    document.getElementById('modal').style.display = 'flex';
+    document.getElementById('modalInput').focus();
+    document.getElementById('modalConfirm').onclick = () => {
+      const name = document.getElementById('modalInput').value.trim(); if (!name) return;
+      const s = newSession(name); state.sessions.push(s); state.active=s.id;
+      this.save(); this.render(); this.closeModal();
+    };
+  },
+  closeModal() { document.getElementById('modal').style.display='none'; },
+
+  /* ── Analysis ── */
+  renderAnalysis() {
+    const s = this.get(); if (!s) return;
+    document.getElementById('prioritySliders').innerHTML = DIMS.map(d => {
+      const v = s.priorities[d.id]||5;
+      return `
+        <div class="dim-row">
+          <div class="dim-label">${d.label}</div>
+          <input type="range" class="dim-slider" min="1" max="10" value="${v}"
+                 oninput="App.updatePriority('${d.id}',this.value)">
+          <div class="dim-val ${v>=7?'high':''}" id="pv-${d.id}">${v}</div>
+        </div>`;
+    }).join('');
+    document.querySelectorAll('.choice-btn').forEach(b => b.classList.toggle('active', s.ctx?.[b.dataset.ctx]===b.dataset.val));
+    document.getElementById('contextNotes').value = s.notes||'';
+    this.renderRanking();
+  },
+
+  updatePriority(id, val) {
+    const s = this.get(); s.priorities[id] = parseInt(val);
+    const el = document.getElementById(`pv-${id}`);
+    el.textContent = val; el.className = `dim-val ${parseInt(val)>=7?'high':''}`;
+    this.save(); this.renderRanking(); this.renderVsTable();
+  },
+
+  setCtx(btn) {
+    const s = this.get(); if (!s.ctx) s.ctx={};
+    const k=btn.dataset.ctx, v=btn.dataset.val;
+    s.ctx[k] = s.ctx[k]===v ? null : v;
+    if (s.ctx.travel==='frequent') s.priorities.flights = Math.max(s.priorities.flights||5, 7);
+    if (s.ctx.phase ==='create')   s.priorities.cost    = Math.max(s.priorities.cost||5, 6);
+    this.save();
+    document.querySelectorAll('.choice-btn').forEach(b => b.classList.toggle('active', s.ctx?.[b.dataset.ctx]===b.dataset.val));
+    DIMS.forEach(d => {
+      const el = document.getElementById(`pv-${d.id}`); if (el) { el.textContent=s.priorities[d.id]||5; el.className=`dim-val ${(s.priorities[d.id]||5)>=7?'high':''}`; }
+      const sl = document.querySelector(`.dim-slider[oninput*="'${d.id}'"]`); if (sl) sl.value=s.priorities[d.id]||5;
+    });
+    this.renderRanking(); this.renderVsTable();
+  },
+
+  saveNotes() { const s=this.get(); s.notes=document.getElementById('contextNotes').value; this.save(); },
+
+  renderRanking() {
+    const s = this.get(); if (!s) return;
+    const cities = getRanked(s);
+    const allEqual = DIMS.every(d => s.priorities[d.id]===5);
+    const noticeEl = document.getElementById('rankingNotice');
+    if (allEqual) {
+      noticeEl.textContent = 'All priorities are equal — ranking reflects average city scores. Move the sliders to reflect your actual priorities and watch it shift.';
+      noticeEl.className = 'ranking-notice';
+    } else {
+      const topDims = DIMS.filter(d => s.priorities[d.id]>=7).map(d=>d.label.toLowerCase());
+      noticeEl.textContent = topDims.length
+        ? `Weighted toward: ${topDims.join(', ')}.`
+        : 'Priorities are set. Balanced across dimensions.';
+      noticeEl.className = 'ranking-notice primed';
+    }
+
+    document.getElementById('cityRankingList').innerHTML = cities.map((city, i) => {
+      const vrd = verdict(city, s.priorities, i, s.ctx, s);
+      const fit = fitLabel(city.score);
+      const gut = s.frameworks?.gutScores?.[city.id];
+      const gutRank = [...cities].sort((a,b)=>(s.frameworks?.gutScores?.[b.id]||5)-(s.frameworks?.gutScores?.[a.id]||5)).findIndex(x=>x.id===city.id);
+      const conflict = gut && Math.abs(i - gutRank) >= 3;
+      const conf = city.computed_confidence || city.confidence||7;
+      const lowConf = conf < 5;
+      const topCity = cities[0];
+
+      const dimRows = DIMS.map(d => {
+        const cv=city.profile[d.id]||0, pv=s.priorities[d.id]||0, imp=cv*pv;
+        const cls = imp>=56?'imp-hi': imp<=20?'imp-lo':'imp-md';
+        const lbl = imp>=56?'good': imp<=20?'low':'—';
+        const bc  = imp>=56?'var(--success)': imp<=20?'var(--danger)':'var(--border-active)';
+        return `<div class="dim-br-row">
+          <div class="dim-br-label">${d.label}</div>
+          <div class="dim-br-bar-wrap"><div class="dim-br-bar" style="width:${cv*10}%;background:${bc}"></div></div>
+          <div class="dim-br-val">${cv}/10</div>
+          <div class="dim-impact ${cls}">${lbl}</div>
+        </div>`;
+      }).join('');
+
+      let oppCostHtml = '';
+      if (i > 0 && topCity) {
+        const gaps = DIMS.map(d => {
+          const gap = (topCity.profile[d.id]||0) - (city.profile[d.id]||0);
+          const prio = s.priorities[d.id]||5;
+          return { d, gap, prio };
+        }).filter(x => x.gap >= 2 && x.prio >= 6)
+          .sort((a,b) => (b.gap * b.prio) - (a.gap * a.prio));
+        
+        if (gaps.length > 0) {
+          const items = gaps.slice(0,3).map(g => 
+            `<span style="color:var(--accent)">${g.d.label.toLowerCase()}</span> (+${g.gap})`
+          ).join(', ');
+          oppCostHtml = `<div class="opp-cost"><strong>Choosing ${esc(city.name)} means giving up:</strong> ${items} vs ${esc(topCity.name)}</div>`;
+        }
+      }
+
+      return `
+        <div class="city-rank-card ${i===0?'rank-1':''} ${conflict?'conflict':''} ${lowConf?'low-conf':''}">
+          <div class="city-rank-head" onclick="App.toggleExpand(this)">
+            <div class="rank-num">${i+1}</div>
+            <div class="city-name-block">
+              <div class="city-name">${esc(city.name)}</div>
+              <div class="city-tagline">${vrd}</div>
+            </div>
+            <div class="match-right">
+              ${lowConf ? '<span class="fit-label fit-mod" style="background:rgba(245,166,35,0.13);color:var(--warning)">Uncertain</span>' : ''}
+              ${Math.abs(city.evidence_delta||0) >= 1 ? `<span class="fit-label fit-good">Evidence +${Math.round(city.evidence_delta)}</span>` : ''}
+              <span class="fit-label ${fit.cls}">${fit.label}</span>
+              <div class="match-pct">${city.score}%</div>
+              <span class="expand-caret">&#9662;</span>
+            </div>
+          </div>
+          <div class="city-rank-details">
+            <div class="verdict-box">${vrd}${lowConf ? '<br><br><strong style="color:var(--warning)">Low confidence:</strong> Your scores for this city are uncertain. Consider researching more before relying on this ranking.' : ''}${city.visa ? '<br><br><strong style="color:var(--warning)">Visa note:</strong> ' + esc(city.visa) : ''}</div>
+            <div class="dim-breakdown">${dimRows}</div>
+            ${oppCostHtml}
+            ${city.notes ? `<div class="city-notes-display">${esc(city.notes)}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  },
+
+  toggleExpand(head) { head.nextElementSibling.classList.toggle('open'); },
+
+  /* ── Framework ── */
+  renderFramework() {
+    const s = this.get(); if (!s) return;
+    const fw = s.frameworks;
+    const cities = getRanked(s);
+
+    document.getElementById('gutSliders').innerHTML = cities.map(c => {
+      const val = fw.gutScores?.[c.id] || 5;
+      const gl = gutLabel(val);
+      return `<div class="gut-row">
+        <div class="gut-city-name">${esc(c.name)}</div>
+        <input type="range" class="gut-slider" min="1" max="10" value="${val}"
+               oninput="App.updateGut('${c.id}',this.value)">
+        <div class="gut-label ${gl.cls}" id="gl-${c.id}">${gl.text}</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('regretSliders').innerHTML = cities.map(c => {
+      const val = fw.regretScores?.[c.id] || 5;
+      return `<div class="regret-row">
+        <div class="regret-city-name">${esc(c.name)}</div>
+        <input type="range" class="regret-slider" min="1" max="10" value="${val}"
+               oninput="App.updateRegret('${c.id}',this.value)">
+        <div class="regret-val" id="rv-${c.id}">${val}</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('regretReflection').value = fw.regretReflection||'';
+
+    document.getElementById('premortCityBtns').innerHTML = cities.slice(0,5).map(c => `
+      <button class="choice-btn ${fw.premortCity===c.id?'active':''}" onclick="App.setPremortCity('${c.id}')">${esc(c.name)}</button>`).join('');
+    document.getElementById('premortText').value = fw.premortText||'';
+
+    const top = cities[0];
+    document.getElementById('tenTenLabel').textContent = top ? `Analyzing: ${top.name} (current #1)` : '';
+    document.getElementById('ten10min').value = fw.ten10min||'';
+    document.getElementById('ten10mo').value  = fw.ten10mo||'';
+    document.getElementById('ten10yr').value  = fw.ten10yr||'';
+
+    this.renderVsTable();
+  },
+
+  renderVsTable() {
+    const s = this.get(); if (!s) return;
+    const fw = s.frameworks;
+    const cities = getRanked(s);
+    const gutRanked    = [...cities].sort((a,b) => (fw.gutScores?.[b.id]||5)    - (fw.gutScores?.[a.id]||5));
+    const regretRanked = [...cities].sort((a,b) => (fw.regretScores?.[b.id]||5) - (fw.regretScores?.[a.id]||5));
+    const el = document.getElementById('vsTable'); if (!el) return;
+
+    const rows = cities.slice(0,6).map(c => {
+      const li = cities.findIndex(x=>x.id===c.id) + 1;
+      const gi = gutRanked.findIndex(x=>x.id===c.id) + 1;
+      const ri = regretRanked.findIndex(x=>x.id===c.id) + 1;
+      const maxDiff = Math.max(Math.abs(li-gi), Math.abs(li-ri));
+      const rowCls = maxDiff >= 3 ? 'vs-conflict' : maxDiff >= 2 ? 'vs-close' : 'vs-agree';
+      const flag = maxDiff >= 3 ? ' — conflict' : maxDiff >= 2 ? ' — minor gap' : ' — aligned';
+      return `<tr>
+        <td><span style="font-size:12px">${esc(c.name)}</span></td>
+        <td><span class="vs-rank vs-agree">#${li}</span></td>
+        <td><span class="vs-rank ${rowCls}">#${gi}</span></td>
+        <td><span class="vs-rank ${rowCls}">#${ri}</span></td>
+        <td><span class="${rowCls}" style="font-size:11px">${flag}</span></td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `<table class="vs-table">
+      <tr><th>City</th><th>Logic rank</th><th>Gut rank</th><th>Regret rank</th><th>Signal</th></tr>
+      ${rows}
+    </table>`;
+  },
+
+  updateGut(id, val) {
+    const s=this.get(); if (!s.frameworks) s.frameworks=defaultFrameworks();
+    s.frameworks.gutScores[id] = parseInt(val);
+    const gl = gutLabel(parseInt(val));
+    const el = document.getElementById(`gl-${id}`);
+    if (el) { el.textContent=gl.text; el.className=`gut-label ${gl.cls}`; }
+    this.save(); this.renderVsTable(); this.renderRanking();
+  },
+
+  updateRegret(id, val) {
+    const s=this.get(); if (!s.frameworks) s.frameworks=defaultFrameworks();
+    s.frameworks.regretScores[id] = parseInt(val);
+    const el = document.getElementById(`rv-${id}`); if (el) el.textContent=val;
+    this.save(); this.renderVsTable();
+  },
+
+  saveFramework(key, val) {
+    const s=this.get(); if (!s.frameworks) s.frameworks=defaultFrameworks();
+    s.frameworks[key]=val; this.save();
+  },
+
+  setPremortCity(id) {
+    const s=this.get(); s.frameworks.premortCity=id; this.save();
+    document.querySelectorAll('#premortCityBtns .choice-btn').forEach(b => {
+      b.classList.toggle('active', b.onclick?.toString().includes(`'${id}'`) || b.getAttribute('onclick')?.includes(`'${id}'`));
+    });
+  },
+
+  /* ── Compare ── */
+  renderCompare() {
+    const s = this.get(); if (!s) return;
+    const selA = document.getElementById('compareCityA');
+    const selB = document.getElementById('compareCityB');
+    if (!selA.options.length || selA.options.length === 1) {
+      const opts = '<option value="">Select city...</option>' + s.cities.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      selA.innerHTML = opts;
+      selB.innerHTML = opts;
+    }
+    const cityAId = selA.value;
+    const cityBId = selB.value;
+    const el = document.getElementById('compareResults');
+    if (!cityAId || !cityBId || cityAId === cityBId) {
+      el.innerHTML = cityAId === cityBId && cityAId ? '<div class="empty-state">Select two different cities to compare.</div>' : '';
+      return;
+    }
+    const cityA = s.cities.find(c => c.id === cityAId);
+    const cityB = s.cities.find(c => c.id === cityBId);
+    if (!cityA || !cityB) return;
+
+    const pairKey = [cityAId, cityBId].sort().join('|');
+    const choices = s.frameworks?.pairwiseChoices?.[pairKey] || {};
+
+    let winsA = 0, winsB = 0;
+    const dimRows = DIMS.map(d => {
+      const aVal = cityA.profile[d.id]||0;
+      const bVal = cityB.profile[d.id]||0;
+      const choice = choices[d.id];
+      if (choice === 'a') winsA++;
+      else if (choice === 'b') winsB++;
+      return `
+        <div class="compare-dim-label">${d.label}</div>
+        <div></div>
+        <div></div>
+        <div class="compare-score ${choice==='a'?'selected':''}" onclick="App.setPairwiseChoice('${pairKey}','${d.id}','a')">
+          <div class="compare-score-value">${aVal}</div>
+        </div>
+        <div class="compare-score tie ${choice==='tie'?'selected':''}" onclick="App.setPairwiseChoice('${pairKey}','${d.id}','tie')">=</div>
+        <div class="compare-score ${choice==='b'?'selected':''}" onclick="App.setPairwiseChoice('${pairKey}','${d.id}','b')">
+          <div class="compare-score-value">${bVal}</div>
+        </div>
+      `;
+    }).join('');
+
+    const winner = winsA > winsB ? 'a' : winsB > winsA ? 'b' : null;
+    const insight = winner 
+      ? `${winner === 'a' ? cityA.name : cityB.name} wins on ${Math.max(winsA, winsB)} of ${DIMS.length} dimensions.`
+      : `Tied at ${winsA}-${winsB}. Look at which dimensions matter most to break the tie.`;
+
+    el.innerHTML = `
+      <div class="compare-grid" style="margin-bottom:0">
+        <div class="compare-city-name ${winner==='a'?'winner':''}">${esc(cityA.name)}</div>
+        <div></div>
+        <div class="compare-city-name ${winner==='b'?'winner':''}">${esc(cityB.name)}</div>
+      </div>
+      <div class="compare-grid">${dimRows}</div>
+      <div class="compare-summary">
+        <div class="compare-summary-title">Head-to-Head Result</div>
+        <div class="compare-tally">
+          <div class="compare-tally-item">
+            <div class="compare-tally-num a">${winsA}</div>
+            <div class="compare-tally-label">${esc(cityA.name)}</div>
+          </div>
+          <div class="compare-tally-item">
+            <div class="compare-tally-num" style="color:var(--text-muted)">${DIMS.length - winsA - winsB}</div>
+            <div class="compare-tally-label">Ties</div>
+          </div>
+          <div class="compare-tally-item">
+            <div class="compare-tally-num b">${winsB}</div>
+            <div class="compare-tally-label">${esc(cityB.name)}</div>
+          </div>
+        </div>
+        <div class="compare-insight">${insight}</div>
+      </div>
+    `;
+  },
+
+  setPairwiseChoice(pairKey, dimId, choice) {
+    const s = this.get();
+    if (!s.frameworks) s.frameworks = defaultFrameworks();
+    if (!s.frameworks.pairwiseChoices) s.frameworks.pairwiseChoices = {};
+    if (!s.frameworks.pairwiseChoices[pairKey]) s.frameworks.pairwiseChoices[pairKey] = {};
+    const current = s.frameworks.pairwiseChoices[pairKey][dimId];
+    s.frameworks.pairwiseChoices[pairKey][dimId] = current === choice ? null : choice;
+    this.save();
+    this.renderCompare();
+  },
+
+  /* ── Inbox / Review ── */
+  renderInbox() {
+    const s=this.get(); if (!s) return;
+    const docs = s.context_docs || [];
+    if (!docs.length) {
+      document.getElementById('docList').innerHTML = `<div class="empty-state">No documents yet.<br>Paste transcripts and tag snippets to cities/criteria.</div>`;
+      return;
+    }
+    document.getElementById('docList').innerHTML = docs.map(doc => `<div class="doc-card">
+      <div class="doc-card-head" onclick="App.toggleDoc('${doc.id}')">
+        <span class="doc-type-pill pill-${doc.type}">${doc.type}</span>
+        <input class="doc-title-input" value="${esc(doc.title)}" onclick="event.stopPropagation()" onchange="App.updateDocTitle('${doc.id}',this.value)">
+        <span class="doc-meta">${doc.date}</span>
+      </div>
+      <div class="doc-body" id="docbody-${doc.id}" style="display:none">
+        ${(doc.snippets || []).map(sn => `
+          <div style="padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;">
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">${esc(sn.text.slice(0,220))}${sn.text.length>220?'...':''}</div>
+            <div style="display:grid;grid-template-columns:1fr 110px 100px 72px 86px;gap:4px;">
+              <select class="add-doc-input" onchange="App.tagSnippet('${doc.id}','${sn.id}','entity_id',this.value)">
+                <option value="">City...</option>
+                ${s.cities.map(c => `<option value="${c.id}" ${sn.links[0]?.entity_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+              </select>
+              <select class="add-doc-input" onchange="App.tagSnippet('${doc.id}','${sn.id}','criterion_id',this.value)">
+                ${DIMS.map(d => `<option value="${d.id}" ${sn.links[0]?.criterion_id===d.id?'selected':''}>${d.id}</option>`).join('')}
+              </select>
+              <input class="add-doc-input" value="${esc((sn.tags||[]).join(', '))}" onchange="App.tagSnippet('${doc.id}','${sn.id}','tags',this.value)" placeholder="tags">
+              <select class="add-doc-input" onchange="App.tagSnippet('${doc.id}','${sn.id}','actionability',this.value)">
+                <option value="1" ${sn.actionability===1?'selected':''}>A1</option>
+                <option value="2" ${sn.actionability===2?'selected':''}>A2</option>
+                <option value="3" ${sn.actionability===3?'selected':''}>A3</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" onclick="App.promoteSnippetToEvidence('${doc.id}','${sn.id}')">Promote</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="doc-footer">
+        <span class="doc-wordcount">${(doc.text||'').split(/\s+/).filter(Boolean).length.toLocaleString()} words</span>
+        <button class="btn btn-danger btn-sm" onclick="App.deleteDoc('${doc.id}')">Delete</button>
+      </div>
+    </div>`).join('');
+  },
+
+  renderReview() {
+    const s = this.get(); if (!s) return;
+    const week = startOfWeekISO();
+    const snippets = (s.context_docs || []).flatMap(d => (d.snippets || []).map(sn => ({doc:d, sn})));
+    const untriaged = snippets.filter(x => !x.sn.links?.length || !x.sn.links[0]?.entity_id);
+    const draft = (s.evidence_items || []).filter(e => evidenceStatus(e) === 'rejected');
+    const importErrors = s.evidence_import_errors || [];
+    const ranked = getRanked(s);
+    const changed = ranked.filter(c => Math.abs(c.evidence_delta||0) >= 1).slice(0, 3);
+    const rejectedStrategies = (s.strategy_candidates || []).filter(c => !c.feasible).slice(0, 8);
+    const bestStrategy = (s.strategy_candidates || []).find(c => c.id === s.recommendation_pack?.selected_strategy_id) || (s.strategy_candidates || [])[0] || null;
+    const fallbackStrategy = (s.strategy_candidates || []).find(c => c.id === s.recommendation_pack?.fallback_strategy_id) || null;
+    const requiredCriteria = ['cost', 'flights', 'queer', 'art', 'studio'];
+    const coverageGaps = (bestStrategy ? [bestStrategy.anchor_city_id, ...(bestStrategy.rotation_city_ids || [])] : [])
+      .flatMap(cid => requiredCriteria.map(crit => ({ cid, crit })))
+      .filter(x => !(s.evidence_items || []).some(e => e.entity_type === 'city' && e.entity_id === x.cid && e.criterion_id === x.crit && evidenceStatus(e) === 'active'))
+      .slice(0, 10);
+    document.getElementById('reviewUntriaged').innerHTML = untriaged.map(x => `<div style="font-size:11px;margin-bottom:6px;">${esc(x.doc.title)}: ${esc(x.sn.text.slice(0,160))}</div>`).join('') || '<div class="empty-state">None</div>';
+    document.getElementById('reviewDraftEvidence').innerHTML =
+      (draft.map(e => `<div style="font-size:11px;margin-bottom:6px;">${esc(e.entity_id || '(missing city)')} · ${esc(e.criterion_id)} · ${esc(e.claim.slice(0,130))}</div>`).join('') || '<div class="empty-state">No draft evidence.</div>')
+      + (importErrors.length ? `<div style="margin-top:8px;font-size:11px;color:var(--warning)">Import errors: ${importErrors.slice(0,3).map(er => esc(er.reason)).join(' | ')}</div>` : '');
+    document.getElementById('reviewRejectedStrategies').innerHTML = rejectedStrategies.length
+      ? rejectedStrategies.map(c => `<div style="font-size:11px;margin-bottom:6px;">${esc(c.mode)} · ${esc(c.anchor_city_id)} · ${esc((c.rationale || []).join(' | ') || 'failed hard constraints')}</div>`).join('')
+      : '<div class="empty-state">Everything is workable with your current limits.</div>';
+    document.getElementById('reviewCoverageGaps').innerHTML = coverageGaps.length
+      ? coverageGaps.map(g => {
+        const city = s.cities.find(c => c.id === g.cid);
+        return `<div style="font-size:11px;margin-bottom:6px;">Research task: add active evidence for <strong>${esc(city?.name || g.cid)}</strong> on <strong>${esc(g.crit)}</strong>.</div>`;
+      }).join('')
+      : '<div class="empty-state">Coverage is healthy for current best strategy.</div>';
+    document.getElementById('reviewHistory').innerHTML =
+      `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Ranking changes from evidence: ${changed.length ? changed.map(c => `${c.name}(+${Math.round(c.evidence_delta)})`).join(' | ') : 'none'}</div>` +
+      `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Recommended strategy: ${bestStrategy ? `${bestStrategy.mode} (${bestStrategy.anchor_city_id})` : 'none'} | fallback: ${fallbackStrategy ? `${fallbackStrategy.mode} (${fallbackStrategy.anchor_city_id})` : 'none'}</div>` +
+      `${s.recommendation_pack ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Switch triggers: ${s.recommendation_pack.switch_triggers.map(esc).join(' | ')}</div>` : ''}` +
+      ((s.weekly_reviews || []).map(r => `<div style="font-size:11px;margin-bottom:6px;">${r.week_of} · ${esc((r.decisions||[]).join(' | ') || 'no decisions')} · focus: ${esc((r.top_focus||[]).join(', '))}</div>`).join('') || '<div class="empty-state">No weekly reviews.</div>');
+    const acceptedThisWeek = (s.evidence_items || []).filter(e => evidenceStatus(e) !== 'rejected' && e.observed_at && startOfWeekISO(e.observed_at) === week).length;
+    const slot = document.getElementById('reviewDecisions');
+    if (slot && !slot.dataset.hintSet) {
+      slot.placeholder = `Weekly decisions (accepted evidence this week: ${acceptedThisWeek})`;
+      slot.dataset.hintSet = '1';
+    }
+  },
+
+  saveWeeklyReview() {
+    const s = this.get(); if (!s) return;
+    const decisions = String(document.getElementById('reviewDecisions').value || '').split(',').map(x => x.trim()).filter(Boolean);
+    const best = s.recommendation_pack?.selected_strategy_id ? (s.strategy_candidates || []).find(c => c.id === s.recommendation_pack.selected_strategy_id) : null;
+    const topFocus = (() => {
+      const out = getRanked(s).slice(0,3).map(c => c.name);
+      if (best) out.push(`strategy:${best.mode}:${best.anchor_city_id}`);
+      return out;
+    })();
+    s.weekly_reviews.unshift(normalizeWeeklyReview({
+      week_of: startOfWeekISO(),
+      decisions,
+      top_focus: topFocus,
+      open_questions: (s.recommendation_pack?.switch_triggers || []).slice(0, 2),
+      snapshot_ref: best ? `strategy:${best.id}` : `review-${uid()}`,
+    }));
+    s.last_review_at = today();
+    document.getElementById('reviewDecisions').value = '';
+    this.save();
+    this.renderReview();
+  },
+
+  showAddDoc()  { document.getElementById('addDocForm').style.display='block'; document.getElementById('newDocTitle').focus(); },
+  hideAddDoc()  { document.getElementById('addDocForm').style.display='none'; },
+
+  addDoc() {
+    const title = document.getElementById('newDocTitle').value.trim();
+    const type  = document.getElementById('newDocType').value;
+    const text  = document.getElementById('newDocText').value;
+    if (!title && !text) return;
+    const s = this.get();
+    const md = parseMarkdownEvidence(text);
+    md.parsed.forEach(item => s.evidence_items.unshift(item));
+    md.invalid.forEach(er => s.evidence_import_errors.unshift({ id: uid(), date: today(), reason: er.reason }));
+    s.context_docs.unshift(normalizeContextDoc({ id:uid(), title:title||'Untitled', type, text, date:today() }));
+    document.getElementById('newDocTitle').value='';
+    document.getElementById('newDocText').value='';
+    this.hideAddDoc(); this.recomputeAfterDataChange(); this.renderInbox();
+  },
+
+  handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('newDocText').value  = ev.target.result;
+      document.getElementById('newDocTitle').value = file.name.replace(/\.[^.]+$/,'');
+      document.getElementById('addDocForm').style.display='block';
+    };
+    reader.readAsText(file);
+  },
+
+  tagSnippet(docId, snippetId, field, val) {
+    const s=this.get();
+    const doc = s.context_docs.find(d => d.id===docId); if (!doc) return;
+    const sn = (doc.snippets||[]).find(x => x.id===snippetId); if (!sn) return;
+    if (!sn.links.length) sn.links.push({ entity_type:'city', entity_id:'', criterion_id:'cost' });
+    if (field==='entity_id') sn.links[0].entity_id = val;
+    if (field==='criterion_id') sn.links[0].criterion_id = val;
+    if (field==='tags') sn.tags = String(val).split(',').map(x=>x.trim()).filter(Boolean);
+    if (field==='actionability') sn.actionability = Math.max(1, Math.min(3, parseInt(val)||1));
+    this.save(); this.renderReview();
+  },
+
+  promoteSnippetToEvidence(docId, snippetId) {
+    const s=this.get();
+    const doc = s.context_docs.find(d => d.id===docId); if (!doc) return;
+    const sn = (doc.snippets||[]).find(x => x.id===snippetId); if (!sn) return;
+    const link = sn.links[0] || { entity_type:'city', entity_id:'', criterion_id:'cost' };
+    s.evidence_items.unshift(normalizeEvidence({
+      entity_type: 'city',
+      entity_id: link.entity_id,
+      criterion_id: link.criterion_id,
+      claim: sn.text.slice(0,220),
+      source_label: doc.title,
+      observed_at: doc.date,
+      confidence: 0,
+      strength: sn.actionability || 1,
+      derived_from_doc_id: doc.id,
+      derived_from_snippet_id: sn.id,
+    }));
+    this.recomputeAfterDataChange();
+  },
+
+  toggleDoc(id) { const el=document.getElementById(`docbody-${id}`); if(el) el.style.display=el.style.display==='none'?'block':'none'; },
+  updateDocTitle(id,v) { const s=this.get(); const d=s.context_docs?.find(x=>x.id===id); if(d){d.title=v;this.save();} },
+  updateDocText(id,v)  { const s=this.get(); const d=s.context_docs?.find(x=>x.id===id); if(d){d.text=v;d.snippets=splitSnippets(v);this.save();this.renderInbox();} },
+  deleteDoc(id)        { const s=this.get(); s.context_docs=(s.context_docs||[]).filter(x=>x.id!==id); this.recomputeAfterDataChange(); this.renderInbox(); },
+
+  /* ── Cities ── */
+  renderCities() {
+    const s=this.get(); if (!s) return;
+    document.getElementById('citiesGrid').innerHTML = s.cities.map((c, idx) => {
+      const dimRows = DIMS.map(d => {
+        const v=c.profile[d.id]||0;
+        return `<div class="city-dim-row">
+          <div class="city-dim-label">${d.label}</div>
+          <input type="number" class="city-score-input" min="1" max="10" value="${v}" onchange="App.updateCityScore('${c.id}','${d.id}',this.value)">
+          <div class="city-dim-bar-wrap"><div class="city-dim-bar" style="width:${v*10}%;background:${DIM_COLORS[d.id]}"></div></div>
+        </div>`;
+      }).join('');
+      const conf = c.confidence||7;
+      return `<div class="city-card ${conf<5?'low-confidence':''}">
+        <div class="city-card-head">
+          <input class="city-name-edit" value="${esc(c.name)}" onblur="App.updateCityName('${c.id}',this.value)">
+          <button class="btn-remove" onclick="App.removeCity('${c.id}')">x</button>
+        </div>
+        <div class="city-card-body">
+          ${dimRows}
+          <div class="city-dim-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:8px">
+            <div class="city-dim-label">Confidence in scores</div>
+            <input type="range" class="conf-slider" min="1" max="10" value="${conf}" oninput="App.updateCityConfidence('${c.id}',this.value)">
+            <span class="conf-val ${conf<5?'conf-low':''}">${conf}/10</span>
+          </div>
+          <div class="city-dim-row">
+            <div class="city-dim-label">Safety (1-10)</div>
+            <input type="number" class="city-score-input" min="1" max="10" value="${c.safety || 6}" onchange="App.updateCitySafety('${c.id}',this.value)">
+            <div class="city-dim-bar-wrap"><div class="city-dim-bar" style="width:${(c.safety || 6)*10}%;background:var(--warning)"></div></div>
+          </div>
+          <div class="city-dim-row">
+            <div class="city-dim-label">Burn / month ($)</div>
+            <input type="number" class="city-score-input" style="width:72px" min="500" step="100" value="${c.monthly_burn || 4200}" onchange="App.updateCityBurn('${c.id}',this.value)">
+            <div style="font-size:10px;color:var(--text-muted)">${Math.round((c.monthly_burn || 4200)/100)/10}k</div>
+          </div>
+          ${c.visa ? `<div class="city-visa">Visa: ${esc(c.visa)}</div>` : ''}
+          <textarea class="city-notes-textarea" rows="2" placeholder="Notes..." onchange="App.updateCityNotes('${c.id}',this.value)">${esc(c.notes||'')}</textarea>
+        </div>
+      </div>`;
+    }).join('') + `<div class="add-city-tile" onclick="App.addCity()">+ Add city</div>`;
+  },
+
+  updateCityScore(cid,did,val) { const s=this.get(); const c=s.cities.find(x=>x.id===cid); if(c){c.profile[did]=Math.min(10,Math.max(1,parseInt(val)||1));this.recomputeAfterDataChange();} },
+  updateCityName(cid,val)  { const s=this.get(); const c=s.cities.find(x=>x.id===cid); if(c&&val.trim()){c.name=val.trim();this.recomputeAfterDataChange();} },
+  updateCityNotes(cid,val) { const s=this.get(); const c=s.cities.find(x=>x.id===cid); if(c){c.notes=val;this.recomputeAfterDataChange();} },
+  updateCityConfidence(cid,val) { const s=this.get(); const c=s.cities.find(x=>x.id===cid); if(c){c.confidence=parseInt(val);this.recomputeAfterDataChange();} },
+  updateCitySafety(cid,val) { const s=this.get(); const c=s.cities.find(x=>x.id===cid); if(c){c.safety=Math.max(1,Math.min(10,parseInt(val)||6));this.recomputeAfterDataChange();this.renderCities();} },
+  updateCityBurn(cid,val) { const s=this.get(); const c=s.cities.find(x=>x.id===cid); if(c){c.monthly_burn=Math.max(500,parseInt(val)||4200);this.recomputeAfterDataChange();} },
+  removeCity(cid) {
+    const s=this.get(); if(s.cities.length<=2){alert('Keep at least 2 cities.');return;}
+    s.cities=s.cities.filter(x=>x.id!==cid); this.recomputeAfterDataChange(); this.renderCities();
+  },
+  addCity() {
+    const name=prompt('City name?'); if(!name?.trim()) return;
+    const s=this.get();
+    s.cities.push({id:uid(),name:name.trim(),visa:null,confidence:7,safety:6,monthly_burn:4200,profile:{cost:5,art:5,flights:5,queer:5,energy:5,nature:5,studio:5},notes:''});
+    this.recomputeAfterDataChange(); this.renderCities();
+  },
+
+  /* ── History ── */
+  saveSnapshot() {
+    const s=this.get();
+    const note=document.getElementById('finalizeNote').value.trim()||'Snapshot';
+    const cities=getRanked(s);
+    const strategyCandidates = s.strategy_candidates || [];
+    const selectedStrategy = s.recommendation_pack?.selected_strategy_id ? strategyCandidates.find(c => c.id === s.recommendation_pack.selected_strategy_id) : strategyCandidates[0] || null;
+    const fallbackStrategy = s.recommendation_pack?.fallback_strategy_id ? strategyCandidates.find(c => c.id === s.recommendation_pack.fallback_strategy_id) : null;
+    const rejected = strategyCandidates.filter(c => !c.feasible);
+    const activeEvidence = (s.evidence_items || []).filter(e => evidenceStatus(e) === 'active');
+    const criterionCounts = {};
+    activeEvidence.forEach(e => { criterionCounts[e.criterion_id] = (criterionCounts[e.criterion_id] || 0) + 1; });
+    const topCriteria = Object.entries(criterionCounts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v]) => `${k} (${v})`);
+    s.history.unshift({ id:uid(), date:new Date().toLocaleString(), note,
+      priorities:{...s.priorities}, ctx:{...s.ctx},
+      ranking:cities.map(c=>({name:c.name,score:c.score, evidence_delta:c.evidence_delta||0})),
+      evidence_count: activeEvidence.length,
+      top_evidence_criteria: topCriteria,
+      selected_strategy: selectedStrategy ? { id: selectedStrategy.id, mode: selectedStrategy.mode, anchor_city_id: selectedStrategy.anchor_city_id, total: selectedStrategy.scores.total } : null,
+      fallback_strategy: fallbackStrategy ? { id: fallbackStrategy.id, mode: fallbackStrategy.mode, anchor_city_id: fallbackStrategy.anchor_city_id, total: fallbackStrategy.scores.total } : null,
+      constraint_failures: rejected.map(c => ({ id: c.id, reasons: c.rationale })),
+      strategy_scores: strategyCandidates.map(c => ({ id: c.id, total: c.scores.total, feasible: c.feasible })),
+      evidence_coverage: { ...(s.evidence_coverage || {}) },
+    });
+    document.getElementById('finalizeNote').value='';
+    this.save(); this.renderHistory(); this.renderSidebar();
+  },
+
+  renderHistory() {
+    const s=this.get(); if(!s) return;
+    const el=document.getElementById('snapshotList');
+    if(!s.history.length) {
+      el.innerHTML='<div class="empty-state">No snapshots yet.<br>Save a snapshot to track how your priorities and rankings evolve over time.</div>';
+      return;
+    }
+    el.innerHTML = s.history.map((snap,si) => {
+      const prev = s.history[si+1];
+      const topP = DIMS.map(d=>({d,v:snap.priorities?.[d.id]||5})).sort((a,b)=>b.v-a.v).slice(0,3);
+      const strategyDelta = (() => {
+        if (!snap.selected_strategy || !prev?.selected_strategy) return '';
+        const prevScore = (prev.strategy_scores || []).find(x => x.id === snap.selected_strategy.id)?.total;
+        if (typeof prevScore !== 'number') return '';
+        const d = snap.selected_strategy.total - prevScore;
+        if (!d) return '';
+        return ` (${d > 0 ? '+' : ''}${d})`;
+      })();
+      const coverageDelta = (() => {
+        const cur = Object.values(snap.evidence_coverage || {}).reduce((n,v)=>n+(Number(v)||0), 0);
+        const prv = Object.values(prev?.evidence_coverage || {}).reduce((n,v)=>n+(Number(v)||0), 0);
+        const d = cur - prv;
+        if (!prev) return '';
+        return `Coverage delta: ${d > 0 ? '+' : ''}${d.toFixed(2)}`;
+      })();
+      return `<div class="snap-card">
+        <div class="snap-header">
+          <div>
+            <div style="font-size:13px;font-weight:600">${esc(snap.note)}</div>
+            <div class="snap-date">${snap.date}</div>
+            <div class="snap-prios">Top priorities: ${topP.map(x=>`${x.d.label.toLowerCase()} (${x.v})`).join(', ')}</div>
+            <div class="snap-prios">Evidence: ${snap.evidence_count||0} active | Criteria: ${esc((snap.top_evidence_criteria||[]).join(', ') || 'none')}</div>
+            <div class="snap-prios">Strategy: ${snap.selected_strategy ? `${snap.selected_strategy.mode} (${snap.selected_strategy.anchor_city_id}) score ${snap.selected_strategy.total}${strategyDelta}` : 'none'} | Fallback: ${snap.fallback_strategy ? `${snap.fallback_strategy.mode} (${snap.fallback_strategy.anchor_city_id})` : 'none'}</div>
+            <div class="snap-prios">Constraint failures: ${(snap.constraint_failures || []).length} ${coverageDelta ? `| ${coverageDelta}` : ''}</div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="App.deleteSnapshot('${snap.id}')">Delete</button>
+        </div>
+        <div class="snap-ranking">
+          ${(snap.ranking||[]).map((c,i) => {
+            const prevIdx = prev?.ranking?.findIndex(x=>x.name===c.name);
+            const delta = prevIdx!=null && prevIdx>=0 ? prevIdx - i : null;
+            const deltaStr = delta!=null && delta!==0 ? `<span style="font-size:10px;color:${delta>0?'var(--success)':'var(--danger)'}"> ${delta>0?'+'+delta:delta}</span>` : '';
+            return `<div class="snap-city-item">
+              <span class="snap-rank-num">#${i+1}</span>
+              <span style="font-weight:${i===0?700:400};color:${i===0?'var(--accent)':'var(--text-secondary)'}">${esc(c.name)}</span>
+              <span style="color:${i===0?'var(--accent)':'var(--text-muted)'};font-weight:600">${c.score}%</span>
+              ${(Math.abs(c.evidence_delta||0)>=1) ? `<span style="font-size:10px;color:var(--success)">ev +${Math.round(c.evidence_delta)}</span>` : ''}
+              ${deltaStr}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  },
+
+  deleteSnapshot(id) { const s=this.get(); s.history=s.history.filter(x=>x.id!==id); this.save(); this.renderHistory(); this.renderSidebar(); },
+
+  /* ── Tabs ── */
+  switchTab(btn) {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab==='strategies') this.renderStrategies();
+    if (btn.dataset.tab==='framework') this.renderFramework();
+    if (btn.dataset.tab==='inbox') this.renderInbox();
+    if (btn.dataset.tab==='review') this.renderReview();
+  },
+
+  exportJSON() {
+    const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'})),download:'city-decision.json'});
+    a.click(); URL.revokeObjectURL(a.href);
+  },
+  importJSON() {
+    const i=Object.assign(document.createElement('input'),{type:'file',accept:'.json'});
+    i.onchange=e=>{const r=new FileReader();r.onload=ev=>{try{state=JSON.parse(ev.target.result);state.sessions?.forEach(ensureSessionSchema);this.save();this.render();}catch{alert('Invalid JSON.');}};r.readAsText(e.target.files[0]);};
+    i.click();
+  },
+};
+
+function uid()   { return Math.random().toString(36).slice(2,9); }
+function today() { return new Date().toISOString().slice(0,10); }
+function startOfWeekISO(d) {
+  const now = d ? new Date(d) : new Date();
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  now.setDate(now.getDate() + diff);
+  return now.toISOString().slice(0, 10);
+}
+function esc(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.getElementById('modal').addEventListener('click', function(e) { if(e.target===this) App.closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') App.closeModal();
+  if (e.key==='Enter' && document.getElementById('modal').style.display!=='none') document.getElementById('modalConfirm').click();
+});
+
+App.init();
+</script>
+</body>
+</html>

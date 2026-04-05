@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { config } from '../config.js';
-import { upsertProject } from '../db/queries.js';
+import { upsertProject, updateProjectOverride } from '../db/queries.js';
 import { getDb } from '../db/schema.js';
 import { detectProject } from './detectors.js';
 import { getGitInfo, getLastModified, hasSubdir } from './enrichers.js';
@@ -49,6 +49,7 @@ export async function runScan(): Promise<number> {
 
       if (!isProjectDir(fullPath)) continue;
 
+      try {
       // Detect and enrich
       const detection = detectProject(fullPath);
       const gitInfo = await getGitInfo(fullPath);
@@ -57,8 +58,15 @@ export async function runScan(): Promise<number> {
       const uc = (await import('../userConfig.js')).getUserConfig();
       const hasSharedLib = uc.sharedLibraries.some((lib) => hasSubdir(fullPath, lib.subdir));
 
-      const id = slugify(basename(fullPath));
-      const name = basename(fullPath);
+      // Use parent+name to avoid ID collisions across scan paths
+      const dirName = basename(fullPath);
+      const parentName = basename(join(fullPath, '..'));
+      const rawId = slugify(dirName);
+      // Check if this ID would collide by querying existing projects with same ID but different path
+      const db = getDb();
+      const existing = db.prepare('SELECT path FROM projects WHERE id = ?').get(rawId) as { path: string } | undefined;
+      const id = (existing && existing.path !== fullPath) ? slugify(`${parentName}-${dirName}`) : rawId;
+      const name = dirName;
 
       upsertProject({
         id,
@@ -81,6 +89,11 @@ export async function runScan(): Promise<number> {
         description: detection.description,
       });
 
+      // Auto-archive projects found under _Archive paths
+      if (scanPath.includes('_Archive')) {
+        updateProjectOverride(id, { customStatus: 'archived' });
+      }
+
       // Populate project_deps table
       try {
         const pkgPath = join(fullPath, 'package.json');
@@ -99,6 +112,23 @@ export async function runScan(): Promise<number> {
       } catch { /* no package.json */ }
 
       count++;
+      } catch (err) {
+        // Don't let one project crash the entire scan
+        console.warn(`  Skipped ${fullPath}: ${err}`);
+      }
+    }
+  }
+
+  // Prune projects whose paths no longer exist on disk
+  const db = getDb();
+  const allRows = db.prepare('SELECT id, path FROM projects').all() as { id: string; path: string }[];
+  for (const row of allRows) {
+    try {
+      statSync(row.path);
+    } catch {
+      db.prepare('DELETE FROM projects WHERE id = ?').run(row.id);
+      db.prepare('DELETE FROM user_overrides WHERE project_id = ?').run(row.id);
+      db.prepare('DELETE FROM project_deps WHERE project_id = ?').run(row.id);
     }
   }
 

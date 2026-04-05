@@ -74,6 +74,16 @@ export function getDb(): Database {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_snapshots_time ON snapshots(captured_at)`);
   } catch { /* already exists */ }
 
+  // Filter presets table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS filter_presets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      filters TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
   // Migrations — add columns if missing
   try {
     db.exec(`ALTER TABLE projects ADD COLUMN git_dirty_count INTEGER NOT NULL DEFAULT 0`);
@@ -84,6 +94,41 @@ export function getDb(): Database {
   try {
     db.exec(`ALTER TABLE user_overrides ADD COLUMN sort_order INTEGER`);
   } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE user_overrides ADD COLUMN custom_dev_command TEXT`);
+  } catch { /* column already exists */ }
+
+  try {
+    db.exec(`ALTER TABLE user_overrides ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'`);
+  } catch { /* column already exists */ }
+
+  // Startup profiles table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS startup_profiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      project_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Command audit log
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS command_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT,
+      verb TEXT NOT NULL,
+      args TEXT,
+      source TEXT NOT NULL DEFAULT 'cli',
+      status TEXT NOT NULL DEFAULT 'ok',
+      message TEXT,
+      duration_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cmdlog_verb ON command_logs(verb)`); } catch { /* exists */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cmdlog_project ON command_logs(project_id)`); } catch { /* exists */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cmdlog_created ON command_logs(created_at)`); } catch { /* exists */ }
 
   return db;
 }

@@ -3,6 +3,7 @@ import type { Project } from '../types/project';
 import { PROJECT_TYPE_LABELS, PROJECT_TYPE_COLORS } from '../types/project';
 import { IconVSCode, IconCursor, IconTerminal, IconFolder, IconGitHub, IconPlay, IconClaude, IconGitCommit } from './Icons';
 import { useProjectActions } from '../hooks/useProjects';
+import { useProfiles, useStartProfile, useStopProfile } from '../hooks/useProfiles';
 import { useToast } from './Toast';
 import { loadSetting, saveSetting } from './SettingsPanel';
 import type { AppView, ViewMode } from '../App';
@@ -23,16 +24,16 @@ interface Command {
   label: string;
   description?: string;
   icon?: React.ReactNode;
-  category: 'recent' | 'project' | 'action' | 'navigation' | 'git' | 'view' | 'environment' | 'deploy';
+  category: 'recent' | 'project' | 'action' | 'navigation' | 'git' | 'view' | 'environment' | 'deploy' | 'profile';
   action: () => void | Promise<void>;
   keywords?: string;
   async?: boolean;
 }
 
-type PaletteMode = 'search' | 'project-actions' | 'commit-input' | 'branch-select';
+type PaletteMode = 'search' | 'project-actions' | 'commit-input' | 'branch-select' | 'verb-result';
 
 const CATEGORY_ORDER: Command['category'][] = [
-  'recent', 'project', 'action', 'git', 'environment', 'deploy', 'navigation', 'view',
+  'recent', 'project', 'action', 'profile', 'git', 'environment', 'deploy', 'navigation', 'view',
 ];
 
 const CATEGORY_LABELS: Record<Command['category'], string> = {
@@ -42,6 +43,7 @@ const CATEGORY_LABELS: Record<Command['category'], string> = {
   git: 'Git',
   environment: 'Environment',
   deploy: 'Deploy',
+  profile: 'Startup Profiles',
   navigation: 'Navigation',
   view: 'Views',
 };
@@ -75,10 +77,15 @@ export function CommandPalette({
   const [branches, setBranches] = useState<{ name: string; isRemote: boolean; isCurrent: boolean }[]>([]);
   const [stagedCount, setStagedCount] = useState(0);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [verbResults, setVerbResults] = useState<{ ok: boolean; message: string }[] | null>(null);
+  const [verbExecuting, setVerbExecuting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const actions = useProjectActions();
+  const { data: profiles } = useProfiles();
+  const startProfile = useStartProfile();
+  const stopProfile = useStopProfile();
   const { toast } = useToast();
 
   // ─── Execute with loading + toast ───
@@ -109,6 +116,13 @@ export function CommandPalette({
 
   // ─── Helpers ───
   const goBack = useCallback(() => {
+    if (mode === 'verb-result') {
+      setMode('search');
+      setQuery('');
+      setVerbResults(null);
+      setTimeout(() => inputRef.current?.focus(), 30);
+      return;
+    }
     if (mode === 'commit-input' || mode === 'branch-select') {
       setMode('project-actions');
       setQuery('');
@@ -260,7 +274,7 @@ export function CommandPalette({
           label: 'Start dev server',
           icon: <IconPlay size={12} color="var(--p-success)" />,
           category: 'action',
-          action: () => { actions.startDev(p.path, p.devCommand!); toast('Dev server starting', 'info'); onClose(); },
+          action: () => { actions.startDev(p.path, p.devCommand!, p.id); toast('Dev server starting', 'info'); onClose(); },
           keywords: 'run start',
         });
       }
@@ -474,7 +488,7 @@ export function CommandPalette({
           label: `Start Dev: ${p.name}`,
           icon: <IconPlay size={12} color="var(--p-success)" />,
           category: 'action',
-          action: () => { actions.startDev(p.path, p.devCommand!); toast('Dev server starting', 'info'); onClose(); },
+          action: () => { actions.startDev(p.path, p.devCommand!, p.id); toast('Dev server starting', 'info'); onClose(); },
           keywords: `${p.name} start dev run server${extraKw}`,
         });
       }
@@ -635,9 +649,32 @@ export function CommandPalette({
       },
     );
 
+    // Profile commands
+    if (profiles && profiles.length > 0) {
+      for (const profile of profiles) {
+        cmds.push({
+          id: `profile-start-${profile.id}`,
+          label: `Start Profile: ${profile.name}`,
+          description: `Launch ${profile.projectIds.length} project${profile.projectIds.length !== 1 ? 's' : ''}`,
+          icon: <IconPlay size={12} color="var(--p-success)" />,
+          category: 'profile',
+          action: () => { startProfile.mutate(profile.id); toast(`Starting profile: ${profile.name}`, 'info'); onClose(); },
+          keywords: `profile launch ${profile.name}`,
+        });
+        cmds.push({
+          id: `profile-stop-${profile.id}`,
+          label: `Stop Profile: ${profile.name}`,
+          category: 'profile',
+          action: () => { stopProfile.mutate(profile.id); toast(`Stopping profile: ${profile.name}`, 'info'); onClose(); },
+          keywords: `profile stop ${profile.name}`,
+        });
+      }
+    }
+
     return cmds;
   }, [
     mode, focusedProject, projects, stagedCount, actions,
+    profiles, startProfile, stopProfile,
     onSelectProject, onClose, onChangeView, onChangeViewMode, onFilterDirty,
     drillIntoProject, startCommitFlow, startBranchFlow, toast,
   ]);
@@ -762,6 +799,13 @@ export function CommandPalette({
         return;
       }
 
+      // Verb detection: if query starts with a known verb, execute it
+      const VERB_SET = new Set(['reset', 'start', 'stop', 'status', 'logs', 'open', 'pull', 'push', 'commit', 'deploy']);
+      const queryParts = query.trim().split(/\s+/);
+      const isVerbCommand = queryParts.length >= 1 && VERB_SET.has(queryParts[0].toLowerCase());
+      // Also detect reversed order: "site reset"
+      const isReversedVerb = queryParts.length >= 2 && VERB_SET.has(queryParts[1].toLowerCase());
+
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
@@ -773,6 +817,38 @@ export function CommandPalette({
           break;
         case 'Enter':
           e.preventDefault();
+          if ((isVerbCommand || isReversedVerb) && mode === 'search') {
+            // Execute as verb command
+            const verb = isVerbCommand ? queryParts[0].toLowerCase() : queryParts[1].toLowerCase();
+            const target = isVerbCommand ? queryParts[1] : queryParts[0];
+            setVerbExecuting(true);
+            setVerbResults(null);
+            setMode('verb-result');
+            fetch('/api/verbs/do', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ verb, target, source: 'ui' }),
+            })
+              .then(r => r.json())
+              .then(data => {
+                setVerbExecuting(false);
+                if (data.steps) {
+                  setVerbResults(data.steps);
+                  toast(data.ok ? `${verb} ${target || ''} complete` : `${verb} failed`, data.ok ? 'success' : 'error');
+                } else if (data.correction) {
+                  setVerbResults([{ ok: false, message: `Did you mean: ${data.suggested}?` }]);
+                } else if (data.ambiguous) {
+                  setVerbResults(data.candidates?.map((c: { name: string }) => ({ ok: false, message: c.name })) || [{ ok: false, message: 'Ambiguous target' }]);
+                } else {
+                  setVerbResults([{ ok: false, message: data.error || 'Unknown error' }]);
+                }
+              })
+              .catch(() => {
+                setVerbExecuting(false);
+                setVerbResults([{ ok: false, message: 'Failed to connect to DevDock API' }]);
+              });
+            return;
+          }
           {
             // Find the command at activeIndex
             for (const g of grouped.groups) {
@@ -818,7 +894,9 @@ export function CommandPalette({
       ? `${focusedProject.name} › Commit`
       : mode === 'branch-select' && focusedProject
         ? `${focusedProject.name} › Branches`
-        : null;
+        : mode === 'verb-result'
+          ? 'Command'
+          : null;
 
   return (
     <div className="cmdp-backdrop" onClick={onClose}>
@@ -873,7 +951,7 @@ export function CommandPalette({
                     ? 'Search branches...'
                     : mode === 'project-actions'
                       ? 'Search actions...'
-                      : 'Search projects, actions, or type a command...'
+                      : 'Search or run a command (e.g. reset site)...'
                 }
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setActiveIndex(0); }}
@@ -883,7 +961,27 @@ export function CommandPalette({
             </div>
 
             <div className="cmdp-list" ref={listRef}>
-              {grouped.totalItems === 0 ? (
+              {mode === 'verb-result' ? (
+                <div style={{ padding: '12px 16px' }}>
+                  {verbExecuting ? (
+                    <div style={{ color: 'var(--p-text-dim)', fontSize: 12 }}>Executing...</div>
+                  ) : verbResults ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {verbResults.map((step, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+                          <span style={{ color: step.ok ? 'var(--p-success)' : 'var(--p-danger)' }}>
+                            {step.ok ? '✓' : '✗'}
+                          </span>
+                          <span style={{ color: 'var(--p-text)' }}>{step.message}</span>
+                        </div>
+                      ))}
+                      <div style={{ marginTop: 8, fontSize: 10, color: 'var(--p-text-muted)' }}>
+                        Press Esc to close
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : grouped.totalItems === 0 ? (
                 <div className="cmdp-empty">No results found</div>
               ) : (
                 grouped.groups.map((group) => (

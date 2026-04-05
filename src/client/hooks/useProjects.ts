@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Project, ProjectFilters } from '../types/project';
+import type { Project, ProjectFilters, FilterPreset } from '../types/project';
 
 const API = '/api';
 
@@ -22,6 +22,7 @@ export function useProjects(filters: ProjectFilters = {}) {
   if (filters.search) params.set('search', filters.search);
   if (filters.type) params.set('type', filters.type);
   if (filters.status) params.set('status', filters.status);
+  if (filters.tag) params.set('tag', filters.tag);
   if (filters.sort) params.set('sort', filters.sort);
 
   return useQuery<Project[]>({
@@ -46,6 +47,19 @@ export function useReorder() {
   });
 }
 
+export function useUpdateOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, overrides }: { projectId: string; overrides: Record<string, unknown> }) =>
+      fetchJson(`${API}/projects/${projectId}/override`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(overrides),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  });
+}
+
 export function useToggleFavorite() {
   const qc = useQueryClient();
   return useMutation({
@@ -65,9 +79,36 @@ export function useProjectActions() {
       postJson(`${API}/actions/open-claude-terminal`, { path }),
     openFinder: (path: string) =>
       postJson(`${API}/actions/open-finder`, { path }),
-    startDev: (path: string, command: string) =>
-      postJson(`${API}/actions/start-dev`, { path, command }),
+    startDev: (path: string, command: string, projectId?: string) =>
+      postJson(`${API}/actions/start-dev`, { path, command, projectId }),
     openUrl: (url: string) =>
       postJson(`${API}/actions/open-url`, { url }),
   };
+}
+
+// ─── Filter Presets ───
+
+export function usePresets() {
+  return useQuery<FilterPreset[]>({
+    queryKey: ['presets'],
+    queryFn: () => fetchJson(`${API}/presets`),
+  });
+}
+
+export function useCreatePreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, filters }: { name: string; filters: object }) =>
+      postJson(`${API}/presets`, { name, filters }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['presets'] }),
+  });
+}
+
+export function useDeletePreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchJson(`${API}/presets/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['presets'] }),
+  });
 }

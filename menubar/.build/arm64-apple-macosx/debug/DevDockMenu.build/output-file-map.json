@@ -1,0 +1,61 @@
+{
+  "": {
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/primary.swiftdeps"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/AppState.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/AppState.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/AppState.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/AppState~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/AppState.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/AppState.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/CommandPaletteWindow.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteWindow.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteWindow.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteWindow.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteWindow.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/DevDockAPIClient.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockAPIClient.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockAPIClient.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockAPIClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockAPIClient.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockAPIClient.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/DevDockMenuApp.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockMenuApp.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockMenuApp.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockMenuApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockMenuApp.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/DevDockMenuApp.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/HotkeyManager.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/HotkeyManager.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/HotkeyManager.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/HotkeyManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/HotkeyManager.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/HotkeyManager.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/Models/Models.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/Models.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/Models.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/Models.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/Models.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/Views/CommandPaletteView.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteView.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteView.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteView~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteView.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/CommandPaletteView.dia"
+  },
+  "/Users/jon/Documents/DevDock/menubar/DevDockMenu/Views/MenuContentView.swift": {
+    "dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/MenuContentView.d",
+    "object": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/MenuContentView.swift.o",
+    "swiftmodule": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/MenuContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/MenuContentView.swiftdeps",
+    "diagnostics": "/Users/jon/Documents/DevDock/menubar/.build/arm64-apple-macosx/debug/DevDockMenu.build/MenuContentView.dia"
+  }
+}

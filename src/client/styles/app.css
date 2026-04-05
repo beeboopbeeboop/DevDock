@@ -270,6 +270,9 @@
 
 .sidebar-section {
   margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .sidebar-section-title {
@@ -401,6 +404,130 @@
   padding: 20px;
   display: flex;
   flex-direction: column;
+}
+
+.priority-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid;
+  background: transparent;
+  line-height: 1.4;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  font-family: var(--p-font-mono, monospace);
+}
+
+.status-popover {
+  position: absolute;
+  z-index: 100;
+  min-width: 160px;
+  background: var(--p-bg-panel);
+  border: 1px solid var(--p-border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.status-popover-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--p-text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.status-popover-option:hover {
+  background: var(--p-bg-hover);
+}
+
+.status-popover-option[data-selected="true"] {
+  background: var(--p-bg-elevated);
+}
+
+.tag-custom {
+  border: 1px solid var(--p-accent-dim, rgba(99, 102, 241, 0.25)) !important;
+}
+
+.tag-remove-btn {
+  background: none;
+  border: none;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 0 0 3px;
+  line-height: 1;
+}
+
+.tag-remove-btn:hover {
+  color: var(--p-danger, #f87171);
+}
+
+.tag-input-inline {
+  display: inline-flex;
+}
+
+.tag-input-inline input:focus {
+  outline: 1px solid var(--p-accent);
+}
+
+.save-view-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--p-accent-dim, rgba(99, 102, 241, 0.3));
+  background: transparent;
+  color: var(--p-accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.save-view-btn:hover {
+  background: var(--p-accent-dim, rgba(99, 102, 241, 0.1));
+}
+
+.preset-delete-btn {
+  color: var(--p-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms;
+  padding: 0 2px;
+}
+
+.sidebar-item:hover .preset-delete-btn {
+  opacity: 1;
+}
+
+.preset-delete-btn:hover {
+  color: var(--p-danger, #f87171);
+}
+
+.archive-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 12px;
+  color: var(--p-text-muted);
+  border-bottom: 1px solid var(--p-border);
+}
+
+.archive-notice code {
+  font-size: 11px;
+  background: var(--p-bg-hover);
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 /* Type pills bar */
