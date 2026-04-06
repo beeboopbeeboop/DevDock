@@ -502,13 +502,18 @@ struct CommandPaletteView: View {
                         .cornerRadius(4)
                 }
 
-                // Gear icon
-                Button(action: { /* TODO: open settings */ }) {
+                // Gear icon — opens config
+                Button(action: {
+                    let configPath = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent(".devdock/config.json")
+                    NSWorkspace.shared.open(configPath)
+                }) {
                     Image(systemName: "gearshape")
                         .font(.system(size: 13))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .help("Open settings (config.json)")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -541,7 +546,7 @@ struct CommandPaletteView: View {
             // Results list
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 0) {
+                    VStack(spacing: 4) {
                         let allSections = state.sections
                         ForEach(Array(allSections.enumerated()), id: \.element.title) { _, section in
                             HStack {

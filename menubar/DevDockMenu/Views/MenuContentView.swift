@@ -94,8 +94,25 @@ struct MenuContentView: View {
             .buttonStyle(MenuRowButtonStyle())
             .padding(.horizontal, 4)
 
+            Button(action: {
+                let configPath = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".devdock/config.json")
+                NSWorkspace.shared.open(configPath)
+            }) {
+                HStack {
+                    Text("Settings")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(MenuRowButtonStyle())
+            .padding(.horizontal, 4)
+
             Button(action: { NSApplication.shared.terminate(nil) }) {
-                Text("Quit DevDock Menu")
+                Text("Quit DevDock")
                     .font(.system(size: 12))
             }
             .buttonStyle(MenuRowButtonStyle())
