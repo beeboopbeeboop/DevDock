@@ -74,12 +74,13 @@ fn main() {
 
             app.set_menu(menu)?;
 
-            // ── System Tray (Phase 2) ──
-            if let Err(e) = tray::setup_tray(app.handle()) {
-                eprintln!("[DevDock] Failed to setup tray: {}", e);
+            // Hide from Dock — menu bar only app
+            #[cfg(target_os = "macos")]
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
 
-            // Global hotkey handled by Swift menu bar app (owns the floating palette)
+            // System tray + global hotkey handled by Swift menu bar app
 
             // ── Sidecar ──
             tauri::async_runtime::spawn(async move {

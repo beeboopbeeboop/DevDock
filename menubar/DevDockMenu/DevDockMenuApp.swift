@@ -2,6 +2,9 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Pre-create palette and load projects so first open is instant
+        CommandPaletteWindowController.shared.preload()
+
         HotkeyManager.shared.register {
             Task { @MainActor in
                 CommandPaletteWindowController.shared.toggle()

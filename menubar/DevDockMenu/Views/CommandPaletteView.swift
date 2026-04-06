@@ -386,7 +386,7 @@ struct CommandPaletteView: View {
             // Results list with section headers
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    VStack(spacing: 0) {
                         let allSections = state.sections
                         ForEach(Array(allSections.enumerated()), id: \.element.title) { _, section in
                             // Section header
@@ -613,7 +613,6 @@ struct PaletteRow: View {
         )
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
-        .animation(.easeOut(duration: 0.1), value: isSelected)
     }
 }
 

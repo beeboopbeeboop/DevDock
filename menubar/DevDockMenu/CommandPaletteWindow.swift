@@ -28,6 +28,14 @@ final class CommandPaletteWindowController {
         panel?.isVisible ?? false
     }
 
+    /// Pre-create the panel and load data so first open is instant
+    func preload() {
+        if panel == nil {
+            createPanel()
+        }
+        paletteState?.loadData()
+    }
+
     func toggle() {
         if isVisible {
             dismiss()

@@ -23,10 +23,6 @@
         "transparent": false
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "tooltip": "DevDock"
-    },
     "security": {
       "csp": "default-src 'self'; connect-src 'self' http://localhost:3070 http://127.0.0.1:3070; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: asset: http://localhost:*; script-src 'self' 'unsafe-inline'"
     }
