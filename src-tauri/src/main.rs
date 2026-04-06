@@ -1,26 +1,23 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Manager, WindowEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WindowEvent};
+use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
 use tauri_plugin_shell::ShellExt;
 use std::time::Duration;
 
 mod hotkey;
+mod tray;
 
 /// Check if the DevDock server is already running on :3070
 async fn is_server_healthy() -> bool {
-    match reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
-        Ok(client) => {
-            match client.get("http://localhost:3070/api/health").send().await {
-                Ok(resp) => resp.status().is_success(),
-                Err(_) => false,
-            }
-        }
-        Err(_) => false,
-    }
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    client.get("http://localhost:3070/api/health").send().await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 /// Wait for the server to become healthy, with retries
@@ -41,7 +38,51 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
-            // Spawn sidecar in background
+            // ── Native App Menu (Phase 4) ──
+            // Edit menu is critical — without it, Cmd+C/V don't work in webview text inputs
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let devdock_menu = SubmenuBuilder::new(app, "DevDock")
+                .about(None)
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .separator()
+                .close_window()
+                .build()?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&devdock_menu)
+                .item(&edit_menu)
+                .item(&window_menu)
+                .build()?;
+
+            app.set_menu(menu)?;
+
+            // ── System Tray (Phase 2) ──
+            if let Err(e) = tray::setup_tray(app.handle()) {
+                eprintln!("[DevDock] Failed to setup tray: {}", e);
+            }
+
+            // ── Global Hotkey (Phase 3) ──
+            hotkey::setup_hotkey(app.handle().clone());
+
+            // ── Sidecar ──
             tauri::async_runtime::spawn(async move {
                 if is_server_healthy().await {
                     println!("[DevDock] Server already running on :3070, skipping sidecar spawn");
@@ -72,7 +113,7 @@ fn main() {
                 }
             });
 
-            // Close-to-hide on main window
+            // ── Close-to-hide ──
             if let Some(window) = app.get_webview_window("main") {
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
