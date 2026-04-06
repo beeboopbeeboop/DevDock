@@ -20,6 +20,9 @@ class PaletteState {
     // Drill-in state
     var drillProject: DevDockProject? = nil
 
+    // Confirmation state for destructive actions on low-confidence matches
+    var pendingConfirmation: PaletteItem? = nil
+
     // Recents
     var recents: [RecentEntry] = []
 
@@ -145,19 +148,26 @@ class PaletteState {
             let parts = q.split(separator: " ", maxSplits: 1)
             let verb = String(parts.first ?? "")
             let target = parts.count > 1 ? String(parts[1]) : ""
-            let matched = target.isEmpty ? projects : scoredProjects(target)
-            let items = matched.map { project in
-                PaletteItem(id: "target-\(project.id)", label: "\(verb) \(project.name)",
-                    description: project.type, icon: iconForVerb(verb), kind: .verb(verb, project.id))
+            let scored = target.isEmpty
+                ? projects.map { ScoredProject(project: $0, score: 100) }
+                : scoredProjects(target)
+            let items = scored.map { sp in
+                var item = PaletteItem(id: "target-\(sp.project.id)", label: "\(verb) \(sp.project.name)",
+                    description: sp.project.type, icon: iconForVerb(verb), kind: .verb(verb, sp.project.id))
+                item.confidence = sp.confidence
+                return item
             }
             return [Section(title: "TARGETS", items: items)]
         }
 
         // Search mode with fuzzy scoring
-        let items = scoredProjects(q).map { project in
-            PaletteItem(id: "search-\(project.id)", label: project.name,
-                description: "\(project.type) \(project.status)\(project.gitDirty ? " (dirty)" : "")",
-                icon: iconForProjectType(project.type), kind: .project(project))
+        let scored = scoredProjects(q)
+        let items = scored.map { sp in
+            var item = PaletteItem(id: "search-\(sp.project.id)", label: sp.project.name,
+                description: "\(sp.project.type) \(sp.project.status)\(sp.project.gitDirty ? " (dirty)" : "")",
+                icon: iconForProjectType(sp.project.type), kind: .project(sp.project))
+            item.confidence = sp.confidence
+            return item
         }
         return [Section(title: "RESULTS", items: items)]
     }
@@ -170,23 +180,42 @@ class PaletteState {
 
     // MARK: - Fuzzy Scored Projects
 
-    private func scoredProjects(_ query: String) -> [DevDockProject] {
+    struct ScoredProject {
+        let project: DevDockProject
+        let score: Int
+        var confidence: Confidence {
+            if score >= 50 { return .high }
+            if score >= 25 { return .medium }
+            return .low
+        }
+    }
+
+    private func scoredProjects(_ query: String) -> [ScoredProject] {
         let runningIds = Set(runningProcesses.map(\.projectId))
         return projects
-            .map { project -> (DevDockProject, Int) in
+            .map { project -> ScoredProject in
                 let nameScore = fuzzyScore(project.name, query)
                 let aliasScore = project.aliases.map { fuzzyScore($0, query) }.max() ?? 0
                 let typeScore = fuzzyScore(project.type, query)
-                var score = max(nameScore, aliasScore, typeScore)
+                // Search path segments (e.g., "documents" matches /Users/jon/Documents/...)
+                let pathScore = project.path.split(separator: "/").map { fuzzyScore(String($0), query) }.max() ?? 0
+                // Search devPort (e.g., "3100")
+                let portScore = project.devPort.map { fuzzyScore(String($0), query) } ?? 0
+                // Search git branch
+                let branchScore = project.gitBranch.map { fuzzyScore($0, query) } ?? 0
+
+                var score = max(nameScore, aliasScore, typeScore, pathScore, portScore, branchScore)
                 if project.isFavorite { score += 5 }
                 if runningIds.contains(project.id) { score += 5 }
-                return (project, score)
+                return ScoredProject(project: project, score: score)
             }
-            .filter { $0.1 > 0 }
-            .sorted { $0.1 > $1.1 }
+            .filter { $0.score > 0 }
+            .sorted { $0.score > $1.score }
             .prefix(20)
-            .map(\.0)
+            .map { $0 }
     }
+
+    static let destructiveVerbs: Set<String> = ["reset", "stop", "deploy"]
 
     // MARK: - Actions
 
@@ -197,6 +226,7 @@ class PaletteState {
         isLoading = false
         isVisible = true
         drillProject = nil
+        pendingConfirmation = nil
         dataReady = false
         recents = RecentsStore.load()
         loadData()
@@ -222,6 +252,12 @@ class PaletteState {
 
         case .verb(let verb, let target):
             guard !target.isEmpty else { return }
+            // Destructive verb + not high confidence = confirm first
+            if Self.destructiveVerbs.contains(verb) && item.confidence != .high && pendingConfirmation == nil {
+                pendingConfirmation = item
+                return
+            }
+            pendingConfirmation = nil
             let projectName = projects.first(where: { $0.id == target })?.name ?? target
             isLoading = true
             verbResult = nil
@@ -519,6 +555,35 @@ struct CommandPaletteView: View {
 
             Divider()
 
+            // Confirmation banner for destructive actions
+            if let pending = state.pendingConfirmation {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text("Run \(pending.label)?")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Button("Yes") {
+                        state.pendingConfirmation = nil
+                        state.executeSelected(item: pending)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+                    Button("No") {
+                        state.pendingConfirmation = nil
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color.orange.opacity(0.08))
+
+                Divider()
+            }
+
             // Verb result banner
             if let result = state.verbResult {
                 HStack(spacing: 8) {
@@ -729,6 +794,16 @@ struct PaletteRow: View {
 
             Spacer()
 
+            // Low confidence hint
+            if item.confidence == .low {
+                Text("maybe?")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.05)))
+            }
+
             // Drill-in indicator for projects
             if case .project(_) = item.kind {
                 Image(systemName: "chevron.right")
@@ -759,6 +834,7 @@ struct PaletteRow: View {
                 .strokeBorder(isSelected ? itemColor.opacity(0.4) : Color.clear, lineWidth: 1)
         )
         .padding(.horizontal, 8)
+        .opacity(item.confidence.opacity)
         .contentShape(Rectangle())
     }
 }

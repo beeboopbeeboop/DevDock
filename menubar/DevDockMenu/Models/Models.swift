@@ -66,12 +66,27 @@ enum PaletteItemKind {
     case projectAction(DevDockProject, ProjectAction) // drill-in action
 }
 
+enum Confidence {
+    case high    // score 50+, execute immediately
+    case medium  // score 25-49, show "confirm?" on destructive actions
+    case low     // score 10-24, dimmed, "did you mean?"
+
+    var opacity: Double {
+        switch self {
+        case .high: return 1.0
+        case .medium: return 0.85
+        case .low: return 0.55
+        }
+    }
+}
+
 struct PaletteItem: Identifiable {
     let id: String
     let label: String
     let description: String
     let icon: String // SF Symbol name
     let kind: PaletteItemKind
+    var confidence: Confidence = .high
 }
 
 // MARK: - Project Actions (drill-in)
