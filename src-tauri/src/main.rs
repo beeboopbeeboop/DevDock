@@ -79,8 +79,7 @@ fn main() {
                 eprintln!("[DevDock] Failed to setup tray: {}", e);
             }
 
-            // ── Global Hotkey (Phase 3) ──
-            hotkey::setup_hotkey(app.handle().clone());
+            // Global hotkey handled by Swift menu bar app (owns the floating palette)
 
             // ── Sidecar ──
             tauri::async_runtime::spawn(async move {

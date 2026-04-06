@@ -89,17 +89,8 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         })
-        .on_tray_icon_event(|tray, event| {
-            if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
-                if let Some(win) = tray.app_handle().get_webview_window("main") {
-                    if win.is_visible().unwrap_or(false) {
-                        let _ = win.hide();
-                    } else {
-                        let _ = win.show();
-                        let _ = win.set_focus();
-                    }
-                }
-            }
+        .on_tray_icon_event(|_tray, _event| {
+            // Menu handles all actions — no left-click toggle
         })
         .build(app)?;
 
