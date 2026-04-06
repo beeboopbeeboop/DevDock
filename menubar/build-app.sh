@@ -46,6 +46,17 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>DevDock URL Scheme</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>devdock</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Palette State
 
@@ -16,14 +17,22 @@ class PaletteState {
     var isVisible = false
     var dataReady = false
 
+    // Drill-in state
+    var drillProject: DevDockProject? = nil
+
+    // Recents
+    var recents: [RecentEntry] = []
+
     static let knownVerbs = ["reset", "start", "stop", "status", "logs", "pull", "push", "commit", "deploy"]
 
     var isVerbMode: Bool {
-        let first = query.trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init) ?? ""
-        return Self.knownVerbs.contains(first.lowercased())
+        drillProject == nil && Self.knownVerbs.contains(query.trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init)?.lowercased() ?? "")
     }
 
-    // Grouped items for section headers
+    var isDrillMode: Bool { drillProject != nil }
+
+    // MARK: - Sections
+
     struct Section {
         let title: String
         let items: [PaletteItem]
@@ -31,61 +40,73 @@ class PaletteState {
 
     var sections: [Section] {
         if !dataReady { return [] }
+
+        // Drill-in mode: show project actions
+        if let project = drillProject {
+            let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+            let actions = ProjectAction.actionsFor(project)
+            let filtered = q.isEmpty ? actions : actions.filter { fuzzyScore($0.label, q) > 0 }
+            let items = filtered.map { action in
+                PaletteItem(
+                    id: "action-\(action.id)",
+                    label: action.label,
+                    description: project.name,
+                    icon: action.icon,
+                    kind: .projectAction(project, action)
+                )
+            }
+            return [Section(title: project.name.uppercased(), items: items)]
+        }
+
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
 
         if q.isEmpty {
             var sections: [Section] = []
 
-            // Running processes
+            // Recents
+            if !recents.isEmpty {
+                let items = recents.compactMap { entry -> PaletteItem? in
+                    PaletteItem(
+                        id: "recent-\(entry.id)",
+                        label: entry.label,
+                        description: entry.projectId,
+                        icon: "clock",
+                        kind: .action(entry.label, entry.projectId, {})
+                    )
+                }
+                sections.append(Section(title: "RECENT", items: items))
+            }
+
+            // Running
             let running = runningProcesses.compactMap { proc -> PaletteItem? in
                 guard let project = projects.first(where: { $0.id == proc.projectId }) else { return nil }
-                return PaletteItem(
-                    id: "running-\(proc.projectId)",
-                    label: project.name,
-                    description: "Running on :\(project.devPort ?? 0)",
-                    icon: "bolt.fill",
-                    kind: .project(project)
-                )
+                return PaletteItem(id: "running-\(proc.projectId)", label: project.name,
+                    description: "Running on :\(project.devPort ?? 0)", icon: "bolt.fill", kind: .project(project))
             }
             if !running.isEmpty { sections.append(Section(title: "RUNNING", items: running)) }
 
             // Verbs
             let verbs = Self.knownVerbs.map { verb in
-                PaletteItem(
-                    id: "verb-\(verb)",
-                    label: verb,
-                    description: "Type '\(verb) <project>' to execute",
-                    icon: iconForVerb(verb),
-                    kind: .verb(verb, "")
-                )
+                PaletteItem(id: "verb-\(verb)", label: verb,
+                    description: "Type '\(verb) <project>' to execute", icon: iconForVerb(verb), kind: .verb(verb, ""))
             }
             sections.append(Section(title: "VERBS", items: verbs))
 
             // Favorites
             let favs = projects.filter(\.isFavorite).compactMap { project -> PaletteItem? in
                 guard !running.contains(where: { $0.id == "running-\(project.id)" }) else { return nil }
-                return PaletteItem(
-                    id: "fav-\(project.id)",
-                    label: project.name,
-                    description: "\(project.type) \(project.status)",
-                    icon: "star.fill",
-                    kind: .project(project)
-                )
+                return PaletteItem(id: "fav-\(project.id)", label: project.name,
+                    description: "\(project.type) \(project.status)", icon: "star.fill", kind: .project(project))
             }
             if !favs.isEmpty { sections.append(Section(title: "FAVORITES", items: favs)) }
 
-            // All projects
+            // Projects
             let runningIds = Set(running.map { $0.id.replacingOccurrences(of: "running-", with: "") })
             let favIds = Set(favs.map { $0.id.replacingOccurrences(of: "fav-", with: "") })
             let rest = projects.compactMap { project -> PaletteItem? in
                 guard !runningIds.contains(project.id) && !favIds.contains(project.id) else { return nil }
-                return PaletteItem(
-                    id: "proj-\(project.id)",
-                    label: project.name,
-                    description: "\(project.type) \(project.status)",
-                    icon: iconForProjectType(project.type),
-                    kind: .project(project)
-                )
+                return PaletteItem(id: "proj-\(project.id)", label: project.name,
+                    description: "\(project.type) \(project.status)", icon: iconForProjectType(project.type), kind: .project(project))
             }
             if !rest.isEmpty { sections.append(Section(title: "PROJECTS", items: rest)) }
 
@@ -97,35 +118,20 @@ class PaletteState {
             let parts = q.split(separator: " ", maxSplits: 1)
             let verb = String(parts.first ?? "")
             let target = parts.count > 1 ? String(parts[1]) : ""
-
-            let matchedProjects = target.isEmpty
-                ? projects
-                : projects.filter { fuzzyMatch($0.name, target) || $0.aliases.contains(where: { fuzzyMatch($0, target) }) }
-
-            let items = matchedProjects.map { project in
-                PaletteItem(
-                    id: "target-\(project.id)",
-                    label: "\(verb) \(project.name)",
-                    description: project.type,
-                    icon: iconForVerb(verb),
-                    kind: .verb(verb, project.id)
-                )
+            let matched = target.isEmpty ? projects : scoredProjects(target)
+            let items = matched.map { project in
+                PaletteItem(id: "target-\(project.id)", label: "\(verb) \(project.name)",
+                    description: project.type, icon: iconForVerb(verb), kind: .verb(verb, project.id))
             }
             return [Section(title: "TARGETS", items: items)]
         }
 
-        // Search mode
-        let items = projects
-            .filter { fuzzyMatch($0.name, q) || $0.aliases.contains(where: { fuzzyMatch($0, q) }) || fuzzyMatch($0.type, q) }
-            .map { project in
-                PaletteItem(
-                    id: "search-\(project.id)",
-                    label: project.name,
-                    description: "\(project.type) \(project.status)\(project.gitDirty ? " (dirty)" : "")",
-                    icon: iconForProjectType(project.type),
-                    kind: .project(project)
-                )
-            }
+        // Search mode with fuzzy scoring
+        let items = scoredProjects(q).map { project in
+            PaletteItem(id: "search-\(project.id)", label: project.name,
+                description: "\(project.type) \(project.status)\(project.gitDirty ? " (dirty)" : "")",
+                icon: iconForProjectType(project.type), kind: .project(project))
+        }
         return [Section(title: "RESULTS", items: items)]
     }
 
@@ -133,9 +139,29 @@ class PaletteState {
         sections.flatMap(\.items)
     }
 
-    var resultCount: Int {
-        filteredItems.count
+    var resultCount: Int { filteredItems.count }
+
+    // MARK: - Fuzzy Scored Projects
+
+    private func scoredProjects(_ query: String) -> [DevDockProject] {
+        let runningIds = Set(runningProcesses.map(\.projectId))
+        return projects
+            .map { project -> (DevDockProject, Int) in
+                let nameScore = fuzzyScore(project.name, query)
+                let aliasScore = project.aliases.map { fuzzyScore($0, query) }.max() ?? 0
+                let typeScore = fuzzyScore(project.type, query)
+                var score = max(nameScore, aliasScore, typeScore)
+                if project.isFavorite { score += 5 }
+                if runningIds.contains(project.id) { score += 5 }
+                return (project, score)
+            }
+            .filter { $0.1 > 0 }
+            .sorted { $0.1 > $1.1 }
+            .prefix(20)
+            .map(\.0)
     }
+
+    // MARK: - Actions
 
     func reset() {
         query = ""
@@ -143,7 +169,9 @@ class PaletteState {
         verbResult = nil
         isLoading = false
         isVisible = true
+        drillProject = nil
         dataReady = false
+        recents = RecentsStore.load()
         loadData()
     }
 
@@ -160,12 +188,10 @@ class PaletteState {
     func executeSelected(item: PaletteItem) {
         switch item.kind {
         case .project(let project):
-            Task {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                process.arguments = ["-a", "Visual Studio Code", project.path]
-                try? process.run()
-            }
+            // Drill into project actions
+            drillProject = project
+            query = ""
+            selectedIndex = 0
 
         case .verb(let verb, let target):
             guard !target.isEmpty else { return }
@@ -183,9 +209,68 @@ class PaletteState {
                     verbResult = "No response from server"
                 }
             }
+            RecentsStore.save(RecentEntry(id: "\(verb)-\(target)", label: "\(verb) \(projectName)", projectId: target, timestamp: Date().timeIntervalSince1970))
 
-        case .action(_, _, let action):
-            action()
+        case .projectAction(let project, let action):
+            executeProjectAction(project: project, action: action)
+
+        case .action(_, _, _):
+            // Recent entry re-tapped — could replay, for now just dismiss
+            break
+        }
+    }
+
+    private func executeProjectAction(project: DevDockProject, action: ProjectAction) {
+        let recentLabel = "\(action.label) — \(project.name)"
+        RecentsStore.save(RecentEntry(id: "\(action.id)-\(project.id)", label: recentLabel, projectId: project.id, timestamp: Date().timeIntervalSince1970))
+
+        Task {
+            switch action.id {
+            case "vscode":
+                await DevDockAPIClient.shared.openEditor(projectId: project.id, editor: "code")
+            case "cursor":
+                await DevDockAPIClient.shared.openEditor(projectId: project.id, editor: "cursor")
+            case "terminal":
+                await DevDockAPIClient.shared.openTerminal(projectId: project.id)
+            case "finder":
+                await DevDockAPIClient.shared.openFinder(projectId: project.id)
+            case "localhost":
+                if let port = project.devPort, let url = URL(string: "http://localhost:\(port)") {
+                    NSWorkspace.shared.open(url)
+                }
+            case "start-dev":
+                _ = await DevDockAPIClient.shared.startDev(projectId: project.id)
+                verbOk = true
+                verbResult = "Started \(project.name)"
+            case "stop-dev":
+                await DevDockAPIClient.shared.stopDev(projectId: project.id)
+                verbOk = true
+                verbResult = "Stopped \(project.name)"
+            case "git-pull":
+                await DevDockAPIClient.shared.gitPull(path: project.path)
+                verbOk = true
+                verbResult = "Pulled \(project.name)"
+            case "copy-path":
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(project.path, forType: .string)
+                verbOk = true
+                verbResult = "Copied path"
+            default:
+                break
+            }
+        }
+
+        // Dismiss after action (except start/stop/pull which show result)
+        if ["vscode", "cursor", "terminal", "finder", "localhost", "copy-path"].contains(action.id) {
+            CommandPaletteWindowController.shared.dismiss()
+        }
+    }
+
+    func goBack() {
+        if drillProject != nil {
+            drillProject = nil
+            query = ""
+            selectedIndex = 0
         }
     }
 
@@ -202,34 +287,34 @@ class PaletteState {
 
     func moveUp() {
         let count = filteredItems.count
-        if count > 0 {
-            selectedIndex = (selectedIndex - 1 + count) % count
-            arrowNavCounter += 1
-        }
+        if count > 0 { selectedIndex = (selectedIndex - 1 + count) % count; arrowNavCounter += 1 }
     }
 
     func moveDown() {
         let count = filteredItems.count
-        if count > 0 {
-            selectedIndex = (selectedIndex + 1) % count
-            arrowNavCounter += 1
-        }
+        if count > 0 { selectedIndex = (selectedIndex + 1) % count; arrowNavCounter += 1 }
     }
+}
+
+// MARK: - Fuzzy Scoring
+
+/// Returns a score > 0 for a match, 0 for no match
+private func fuzzyScore(_ text: String, _ query: String) -> Int {
+    let t = text.lowercased()
+    let q = query.lowercased()
+    if t == q { return 100 }
+    if t.hasPrefix(q) { return 50 }
+    if t.contains(q) { return 25 }
+    // Ordered character subsequence
+    var tIndex = t.startIndex
+    for char in q {
+        guard let found = t[tIndex...].firstIndex(of: char) else { return 0 }
+        tIndex = t.index(after: found)
+    }
+    return 10
 }
 
 // MARK: - Helpers
-
-private func fuzzyMatch(_ text: String, _ query: String) -> Bool {
-    let t = text.lowercased()
-    let q = query.lowercased()
-    if t.contains(q) { return true }
-    var tIndex = t.startIndex
-    for char in q {
-        guard let found = t[tIndex...].firstIndex(of: char) else { return false }
-        tIndex = t.index(after: found)
-    }
-    return true
-}
 
 private func iconForVerb(_ verb: String) -> String {
     switch verb {
@@ -310,11 +395,21 @@ struct CommandPaletteView: View {
         VStack(spacing: 0) {
             // Search bar
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 16))
+                if state.isDrillMode {
+                    // Back button in drill mode
+                    Button(action: { state.goBack() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 16))
+                }
 
-                TextField("Type a verb or project name...", text: $state.query)
+                TextField(state.isDrillMode ? "Filter actions..." : "Type a verb or project name...", text: $state.query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 18, weight: .light))
                     .foregroundStyle(.primary)
@@ -325,16 +420,12 @@ struct CommandPaletteView: View {
                             state.executeSelected(item: items[state.selectedIndex])
                         }
                     }
-                    .onChange(of: state.query) {
-                        state.selectedIndex = 0
-                    }
+                    .onChange(of: state.query) { state.selectedIndex = 0 }
 
                 if state.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.6)
+                    ProgressView().scaleEffect(0.6)
                 }
 
-                // Clear button
                 if !state.query.isEmpty {
                     Button(action: { state.query = "" }) {
                         Image(systemName: "xmark.circle.fill")
@@ -351,6 +442,16 @@ struct CommandPaletteView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(.orange.opacity(0.15))
+                        .cornerRadius(4)
+                }
+
+                if state.isDrillMode {
+                    Text("ACTIONS")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.cyan)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.cyan.opacity(0.15))
                         .cornerRadius(4)
                 }
             }
@@ -378,18 +479,16 @@ struct CommandPaletteView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(state.verbOk ? Color.green.opacity(0.08) : Color.red.opacity(0.08))
-                .transition(.move(edge: .top).combined(with: .opacity))
 
                 Divider()
             }
 
-            // Results list with section headers
+            // Results list
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 0) {
                         let allSections = state.sections
                         ForEach(Array(allSections.enumerated()), id: \.element.title) { _, section in
-                            // Section header
                             HStack {
                                 Text(section.title)
                                     .font(.system(size: 9, weight: .semibold, design: .rounded))
@@ -403,15 +502,12 @@ struct CommandPaletteView: View {
 
                             ForEach(Array(section.items.enumerated()), id: \.element.id) { _, item in
                                 let globalIndex = state.filteredItems.firstIndex(where: { $0.id == item.id }) ?? 0
-                                PaletteRow(
-                                    item: item,
-                                    isSelected: globalIndex == state.selectedIndex
-                                )
-                                .id(item.id)
-                                .onTapGesture {
-                                    state.selectedIndex = globalIndex
-                                    state.executeSelected(item: item)
-                                }
+                                PaletteRow(item: item, isSelected: globalIndex == state.selectedIndex)
+                                    .id(item.id)
+                                    .onTapGesture {
+                                        state.selectedIndex = globalIndex
+                                        state.executeSelected(item: item)
+                                    }
                             }
                         }
 
@@ -433,7 +529,6 @@ struct CommandPaletteView: View {
                 .onChange(of: state.arrowNavCounter) { _, _ in
                     let items = state.filteredItems
                     if state.selectedIndex < items.count {
-                        // anchor: nil = only scroll if item is off-screen, minimal movement
                         proxy.scrollTo(items[state.selectedIndex].id, anchor: nil)
                     }
                 }
@@ -442,31 +537,20 @@ struct CommandPaletteView: View {
             // Footer
             Divider()
             HStack(spacing: 12) {
-                HStack(spacing: 4) {
-                    KeyHint("↑↓")
-                    Text("navigate")
-                }
-                HStack(spacing: 4) {
-                    KeyHint("↩")
-                    Text("select")
-                }
-                if state.isVerbMode {
-                    HStack(spacing: 4) {
-                        KeyHint("tab")
-                        Text("complete")
+                HStack(spacing: 4) { KeyHint("↑↓"); Text("navigate") }
+                HStack(spacing: 4) { KeyHint("↩"); Text("select") }
+                if state.isDrillMode {
+                    HStack(spacing: 4) { KeyHint("esc"); Text("back") }
+                } else {
+                    if state.isVerbMode {
+                        HStack(spacing: 4) { KeyHint("tab"); Text("complete") }
                     }
-                }
-                HStack(spacing: 4) {
-                    KeyHint("esc")
-                    Text("close")
+                    HStack(spacing: 4) { KeyHint("esc"); Text("close") }
                 }
                 Spacer()
-
-                // Result count
                 Text("\(state.resultCount) item\(state.resultCount == 1 ? "" : "s")")
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
-
                 Text(HotkeyManager.shared.config.displayLabel)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
@@ -483,31 +567,30 @@ struct CommandPaletteView: View {
                 .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
-        // Bounce-in animation
         .scaleEffect(state.isVisible ? 1.0 : 0.97)
         .animation(.spring(response: 0.2, dampingFraction: 0.75), value: state.isVisible)
         .onAppear {
             isSearchFocused = true
-            // Trigger bounce
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                state.isVisible = true
-            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { state.isVisible = true }
         }
-        .onKeyPress(.upArrow) {
-            state.moveUp()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            state.moveDown()
-            return .handled
-        }
+        .onKeyPress(.upArrow) { state.moveUp(); return .handled }
+        .onKeyPress(.downArrow) { state.moveDown(); return .handled }
         .onKeyPress(.escape) {
-            onDismiss()
+            if state.isDrillMode {
+                state.goBack()
+            } else {
+                onDismiss()
+            }
             return .handled
         }
-        .onKeyPress(.tab) {
-            state.tabAutocomplete()
-            return .handled
+        .onKeyPress(.tab) { state.tabAutocomplete(); return .handled }
+        .onKeyPress(.delete) {
+            // Backspace on empty query goes back from drill mode
+            if state.query.isEmpty && state.isDrillMode {
+                state.goBack()
+                return .handled
+            }
+            return .ignored
         }
     }
 }
@@ -524,6 +607,8 @@ struct PaletteRow: View {
             return colorForProjectType(proj.type)
         case .verb(let verb, _):
             return colorForVerb(verb)
+        case .projectAction(_, let action):
+            return Color(red: action.color.0, green: action.color.1, blue: action.color.2)
         case .action:
             return Color(red: 0.42, green: 0.45, blue: 0.50)
         }
@@ -531,7 +616,6 @@ struct PaletteRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Color-coded icon
             Image(systemName: item.icon)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isSelected ? .white : itemColor)
@@ -550,31 +634,18 @@ struct PaletteRow: View {
                 if !item.description.isEmpty {
                     HStack(spacing: 4) {
                         if case .project(let proj) = item.kind {
-                            // Type pill
                             Text(proj.type.replacingOccurrences(of: "-", with: " "))
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(isSelected ? .white.opacity(0.9) : itemColor)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(isSelected ? itemColor.opacity(0.3) : itemColor.opacity(0.1))
-                                )
-
+                                .background(RoundedRectangle(cornerRadius: 3).fill(isSelected ? itemColor.opacity(0.3) : itemColor.opacity(0.1)))
                             Text(proj.status)
                                 .font(.system(size: 9))
                                 .foregroundStyle(isSelected ? .white.opacity(0.7) : colorForStatus(proj.status))
-
                             if proj.gitDirty {
-                                Circle()
-                                    .fill(Color.orange)
-                                    .frame(width: 4, height: 4)
+                                Circle().fill(Color.orange).frame(width: 4, height: 4)
                             }
-                        } else if case .verb(_, _) = item.kind {
-                            // Verb description with colored pill
-                            Text(item.description)
-                                .font(.system(size: 10))
-                                .foregroundStyle(isSelected ? Color.white.opacity(0.7) : Color.gray)
                         } else {
                             Text(item.description)
                                 .font(.system(size: 10))
@@ -587,13 +658,18 @@ struct PaletteRow: View {
 
             Spacer()
 
+            // Drill-in indicator for projects
+            if case .project(_) = item.kind {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isSelected ? .white.opacity(0.5) : Color.gray.opacity(0.3))
+            }
+
             // Running indicator
             if case .project(let proj) = item.kind, proj.devPort != nil {
                 if item.id.hasPrefix("running-") {
                     HStack(spacing: 4) {
-                        Circle()
-                            .fill(.green)
-                            .frame(width: 6, height: 6)
+                        Circle().fill(.green).frame(width: 6, height: 6)
                         Text(":\(proj.devPort ?? 0)")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(isSelected ? .white.opacity(0.7) : Color.gray)
@@ -621,7 +697,6 @@ struct PaletteRow: View {
 struct KeyHint: View {
     let text: String
     init(_ text: String) { self.text = text }
-
     var body: some View {
         Text(text)
             .font(.system(size: 9, weight: .medium, design: .monospaced))

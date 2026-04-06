@@ -125,4 +125,38 @@ actor DevDockAPIClient {
             return false
         }
     }
+
+    // MARK: - Project Actions
+
+    func openEditor(projectId: String, editor: String) async {
+        await postAction("open-editor", body: ["projectId": projectId, "editor": editor])
+    }
+
+    func openTerminal(projectId: String) async {
+        await postAction("open-terminal", body: ["projectId": projectId])
+    }
+
+    func openFinder(projectId: String) async {
+        await postAction("open-finder", body: ["projectId": projectId])
+    }
+
+    func gitPull(path: String) async {
+        await postAction("git-pull", body: ["path": path])
+    }
+
+    func stopDev(projectId: String) async {
+        guard let url = URL(string: "\(baseURL)/actions/terminal-stop/\(projectId)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        _ = try? await session.data(for: request)
+    }
+
+    private func postAction(_ action: String, body: [String: Any]) async {
+        guard let url = URL(string: "\(baseURL)/actions/\(action)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await session.data(for: request)
+    }
 }
