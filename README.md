@@ -45,7 +45,8 @@ reset devdock
 - **Order doesn't matter.** `reset site` and `site reset` both work. Type it however your brain says it.
 - **Typo correction.** `resst site` → "Did you mean: **reset** site?" Auto-corrects on Enter.
 - **CWD-aware.** If you're inside a project folder, just type `status` — no target needed.
-- **Works everywhere.** Same verbs work in terminal, in the dashboard's Cmd+K palette, and via API.
+- **Works everywhere.** Same verbs work in terminal, the dashboard's Cmd+K palette, the global command palette, deep links, and via API.
+- **Global command palette.** Press `Ctrl+Shift+D` from any app — Raycast-style floating palette appears. Search projects, run verbs, execute shell commands. No browser needed.
 - **Always on.** Runs as a background service. Open a terminal, it's there. No startup command.
 
 ## Quick Start
@@ -169,6 +170,32 @@ A full web UI at `localhost:3070` with:
 - **Environment Manager** — Compare `.env` files across projects, audit for missing vars
 - **Insights** — Analytics on project activity over time
 
+### Native Desktop App (Tauri)
+
+DevDock ships as an 8MB native macOS app built with Tauri v2:
+
+- **No browser tab needed** — Dashboard runs in a native window
+- **System tray** — Running servers, profiles, quick actions
+- **Close-to-hide** — Close the window, app stays in the tray
+- **Auto-launches on login** via LaunchAgent
+- **Sidecar management** — Automatically starts/stops the backend server
+- **Native menus** — Edit (Cmd+C/V/X/Z), Window, DevDock
+
+### Global Command Palette
+
+Press `Ctrl+Shift+D` from any app to open a floating command palette (like Raycast):
+
+- **Fuzzy search** with confidence scoring — results ranked by match quality
+- **Project drill-in** — Select a project to see actions: Open in VS Code, Cursor, Terminal, Finder, start/stop dev server, git pull, copy path
+- **Verb execution** — Type `reset site` directly
+- **Shell commands** — Prefix with `>` to run any terminal command inline (e.g., `> git status`)
+- **Recent commands** — Last 8 actions shown at the top
+- **Smart matching** — Searches name, aliases, type, tech stack, port, path, git branch
+- **Confidence indicators** — Low-confidence matches shown dimmed with "maybe?" badge
+- **Destructive action protection** — `reset`, `stop`, `deploy` on uncertain matches show confirmation before executing
+- **Configurable hotkey** — Change in `~/.devdock/config.json`
+- **Deep links** — `open devdock://palette` from anywhere
+
 ### Menu Bar App
 
 A native macOS menu bar companion (Swift):
@@ -177,6 +204,7 @@ A native macOS menu bar companion (Swift):
 - Stop/restart servers without opening the dashboard
 - Launch startup profiles from the menu bar
 - Crash notifications via macOS notification center
+- Settings access (opens config.json)
 - Auto-launches with DevDock
 
 ### Startup Profiles
@@ -198,6 +226,16 @@ Also accessible via Cmd+K in the dashboard.
 - **Restart Budget** — Max 3 restarts in 5 minutes before giving up
 - **Custom Dev Commands** — Override auto-detected start commands per project
 
+### Deep Links
+
+Trigger DevDock actions from anywhere — Finder, Alfred, scripts, other apps:
+
+```bash
+open devdock://palette              # Open command palette
+open devdock://reset/site           # Execute a verb
+open devdock://open/proteus         # Open project in VS Code
+```
+
 ### Command Palette (Cmd+K)
 
 Fuzzy search across projects, actions, git operations, profiles, and navigation. Multi-level drill-in for project-specific actions.
@@ -206,11 +244,14 @@ Fuzzy search across projects, actions, git operations, profiles, and navigation.
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd+K` | Command palette |
+| `Ctrl+Shift+D` | Global command palette (from any app) |
+| `Cmd+K` | Dashboard command palette |
 | `Cmd+1`-`5` | Switch views |
 | `Cmd+B` | Batch selection mode |
 | `E` / `T` / `F` | Open in editor / terminal / Finder |
 | `↑↓` / `Enter` / `Esc` | Navigate / select / close |
+| `>` prefix | Shell command mode in palette |
+| `Tab` | Autocomplete in verb mode |
 
 ## CLI Reference
 
@@ -246,48 +287,39 @@ devdock health                           # Server health
 ## Architecture
 
 ```
-                          ┌─────────────────┐
-                          │   Menu Bar App   │ (Swift, polls API)
-                          │   macOS native   │
-                          └────────┬────────┘
-                                   │
-┌─────────────┐  ┌─────────────┐  │  ┌─────────────┐
-│  Dashboard  │  │    CLI      │  │  │  Verb API   │
-│  React 19   │──│  Bun CLI    │──┼──│  /api/verbs │
-│  + Vite 8   │  │  + shell    │  │  │  /do        │
-└──────┬──────┘  └──────┬──────┘  │  └──────┬──────┘
-       │                │         │         │
-       └────────────────┴─────────┴─────────┘
-                        │
-              ┌─────────┴─────────┐
-              │    Hono on Bun    │
-              │    API Server     │
-              ├───────────────────┤
-              │  Verb Engine      │ ← Type-aware recipes
-              │  Process Manager  │ ← Crash recovery
-              │  Project Scanner  │ ← Auto-discovery
-              │  Security Layer   │ ← Command validation
-              ├───────────────────┤
-              │     SQLite        │
-              └───────────────────┘
-```
-
-## Configuration
-
-```json
-{
-  "scanPaths": ["~/Documents", "~/Code"],
-  "sharedLibraries": [
-    {
-      "name": "MySharedLib",
-      "masterPath": "~/Code/my-shared-lib",
-      "subdir": "shared"
-    }
-  ],
-  "projectSignals": ["package.json", "tsconfig.json", "manifest.xml"],
-  "ignorePatterns": ["node_modules", ".git", "dist", "build"],
-  "port": 3070
-}
+┌──────────────────────────────────────────────┐
+│              Tauri Native App                 │
+│  ┌──────────────┐  ┌───────────────────────┐ │
+│  │ System Tray  │  │  Dashboard Window     │ │
+│  │ (Rust)       │  │  (WebView → React 19) │ │
+│  └──────────────┘  └───────────────────────┘ │
+└──────────────────────┬───────────────────────┘
+                       │
+┌──────────────────────┼───────────────────────┐
+│  Swift Menu Bar App  │                       │
+│  ┌────────────────┐  │  ┌─────────────────┐  │
+│  │ Global Hotkey  │  │  │ Floating Palette│  │
+│  │ (CGEventTap)   │  │  │ (NSPanel)       │  │
+│  └────────────────┘  │  └─────────────────┘  │
+└──────────────────────┼───────────────────────┘
+                       │
+    ┌─────────────┐    │    ┌──────────────┐
+    │    CLI      │    │    │  Deep Links  │
+    │  Bun + zsh  │────┼────│  devdock://   │
+    └─────────────┘    │    └──────────────┘
+                       │
+             ┌─────────┴─────────┐
+             │    Hono on Bun    │
+             │    API Server     │
+             ├───────────────────┤
+             │  Verb Engine      │ ← Type-aware recipes
+             │  Process Manager  │ ← Crash recovery
+             │  Project Scanner  │ ← Auto-discovery
+             │  Security Layer   │ ← Command validation
+             │  Shell Executor   │ ← Palette commands
+             ├───────────────────┤
+             │     SQLite        │
+             └───────────────────┘
 ```
 
 ## Security
@@ -299,14 +331,33 @@ devdock health                           # Server health
 - **Secrets scanning** — 20+ patterns for AWS keys, Stripe tokens, database URLs, private keys
 - **`.env` masking** — Values masked by default, explicit `--reveal` required
 
+## Configuration
+
+Hotkey and other settings are configurable in `~/.devdock/config.json`:
+
+```json
+{
+  "scanPaths": ["~/Documents", "~/Code"],
+  "port": 3070,
+  "hotkey": {
+    "key": "D",
+    "modifiers": ["ctrl", "shift"]
+  }
+}
+```
+
+Change the hotkey to any key + modifier combo. Relaunch the menu bar app to apply.
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Runtime | Bun |
+| Native App | Tauri v2 (Rust, 8MB binary) |
 | Frontend | React 19, TypeScript, Vite 8, Tailwind CSS v4, TanStack Query |
 | Backend | Hono, SQLite (Bun native driver) |
-| Menu Bar | Swift, SwiftUI, MenuBarExtra |
+| Command Palette | Swift, SwiftUI, NSPanel (floating overlay) |
+| Menu Bar | Swift, SwiftUI, MenuBarExtra, CGEventTap |
 | Process Mgmt | Bun.spawn with SSE streaming, crash recovery |
 
 ## Contributing
