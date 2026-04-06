@@ -151,6 +151,29 @@ actor DevDockAPIClient {
         _ = try? await session.data(for: request)
     }
 
+    func execCommand(command: String) async -> (ok: Bool, output: String) {
+        guard let url = URL(string: "\(baseURL)/actions/exec") else { return (false, "Invalid URL") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+        let body: [String: Any] = ["command": command]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, _) = try await session.data(for: request)
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let ok = json["ok"] as? Bool ?? false
+                let stdout = json["stdout"] as? String ?? ""
+                let stderr = json["stderr"] as? String ?? ""
+                let output = stdout.isEmpty ? stderr : stdout
+                return (ok, output.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            return (false, "Parse error")
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
     private func postAction(_ action: String, body: [String: Any]) async {
         guard let url = URL(string: "\(baseURL)/actions/\(action)") else { return }
         var request = URLRequest(url: url)

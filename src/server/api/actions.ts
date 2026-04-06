@@ -1224,3 +1224,43 @@ actionsApi.post('/batch', async (c) => {
     ),
   });
 });
+
+// ─── Shell Command Execution (for command palette) ───
+
+actionsApi.post('/exec', async (c) => {
+  const { command, cwd } = await c.req.json();
+  if (!command || typeof command !== 'string') {
+    return c.json({ ok: false, error: 'command is required' }, 400);
+  }
+  // Cap command length
+  if (command.length > 2000) {
+    return c.json({ ok: false, error: 'Command too long' }, 400);
+  }
+
+  const workDir = cwd || process.env.HOME || '/';
+
+  try {
+    const proc = Bun.spawn(['sh', '-c', command], {
+      cwd: workDir,
+      env: {
+        ...process.env,
+        PATH: `${process.env.HOME}/.bun/bin:${process.env.HOME}/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}`,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+
+    return c.json({
+      ok: exitCode === 0,
+      stdout: stdout.slice(0, 10000), // cap output
+      stderr: stderr.slice(0, 5000),
+      exitCode,
+    });
+  } catch (e: any) {
+    return c.json({ ok: false, error: e.message || 'Execution failed' }, 500);
+  }
+});

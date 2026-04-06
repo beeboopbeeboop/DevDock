@@ -29,6 +29,18 @@ class PaletteState {
         drillProject == nil && Self.knownVerbs.contains(query.trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init)?.lowercased() ?? "")
     }
 
+    /// Detect shell mode: starts with > or $
+    var isShellMode: Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.hasPrefix(">") || q.hasPrefix("$")
+    }
+
+    var shellCommand: String? {
+        guard isShellMode else { return nil }
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return String(q.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
+
     var isDrillMode: Bool { drillProject != nil }
 
     // MARK: - Sections
@@ -111,6 +123,21 @@ class PaletteState {
             if !rest.isEmpty { sections.append(Section(title: "PROJECTS", items: rest)) }
 
             return sections
+        }
+
+        // Shell mode: > or $ prefix
+        if isShellMode {
+            if let cmd = shellCommand, !cmd.isEmpty {
+                let item = PaletteItem(
+                    id: "shell-exec",
+                    label: cmd,
+                    description: "Run in shell",
+                    icon: "terminal",
+                    kind: .action(cmd, "shell", {})
+                )
+                return [Section(title: "SHELL", items: [item])]
+            }
+            return []
         }
 
         // Verb mode
@@ -214,9 +241,19 @@ class PaletteState {
         case .projectAction(let project, let action):
             executeProjectAction(project: project, action: action)
 
-        case .action(_, _, _):
-            // Recent entry re-tapped — could replay, for now just dismiss
-            break
+        case .action(let label, let desc, _):
+            if desc == "shell" {
+                // Execute shell command
+                isLoading = true
+                verbResult = nil
+                Task {
+                    let result = await DevDockAPIClient.shared.execCommand(command: label)
+                    isLoading = false
+                    verbOk = result.ok
+                    verbResult = result.output.isEmpty ? (result.ok ? "Done" : "Failed") : result.output
+                }
+                RecentsStore.save(RecentEntry(id: "shell-\(label.prefix(30))", label: "> \(label)", projectId: "shell", timestamp: Date().timeIntervalSince1970))
+            }
         }
     }
 
@@ -445,6 +482,16 @@ struct CommandPaletteView: View {
                         .cornerRadius(4)
                 }
 
+                if state.isShellMode {
+                    Text("SHELL")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.green.opacity(0.15))
+                        .cornerRadius(4)
+                }
+
                 if state.isDrillMode {
                     Text("ACTIONS")
                         .font(.system(size: 9, weight: .bold))
@@ -454,6 +501,14 @@ struct CommandPaletteView: View {
                         .background(.cyan.opacity(0.15))
                         .cornerRadius(4)
                 }
+
+                // Gear icon
+                Button(action: { /* TODO: open settings */ }) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -504,6 +559,9 @@ struct CommandPaletteView: View {
                                 let globalIndex = state.filteredItems.firstIndex(where: { $0.id == item.id }) ?? 0
                                 PaletteRow(item: item, isSelected: globalIndex == state.selectedIndex)
                                     .id(item.id)
+                                    .onHover { hovering in
+                                        if hovering { state.selectedIndex = globalIndex }
+                                    }
                                     .onTapGesture {
                                         state.selectedIndex = globalIndex
                                         state.executeSelected(item: item)
@@ -552,8 +610,14 @@ struct CommandPaletteView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
                 Text(HotkeyManager.shared.config.displayLabel)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.quaternary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(.white.opacity(0.06))
+                    )
             }
             .font(.system(size: 10))
             .foregroundStyle(.quaternary)
