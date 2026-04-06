@@ -502,18 +502,17 @@ struct CommandPaletteView: View {
                         .cornerRadius(4)
                 }
 
-                // Gear icon — opens config
+                // Gear icon — opens config in default editor
                 Button(action: {
-                    let configPath = FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent(".devdock/config.json")
-                    NSWorkspace.shared.open(configPath)
+                    let path = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent(".devdock/config.json").path
+                    Process.launchedProcess(launchPath: "/usr/bin/open", arguments: ["-t", path])
                 }) {
                     Image(systemName: "gearshape")
                         .font(.system(size: 13))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("Open settings (config.json)")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -629,7 +628,10 @@ struct CommandPaletteView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
-        .background(.ultraThinMaterial)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)

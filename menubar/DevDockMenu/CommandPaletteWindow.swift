@@ -107,7 +107,10 @@ final class CommandPaletteWindowController {
             rootView: CommandPaletteView(state: state, onDismiss: { [weak self] in
                 self?.dismiss()
             })
+            .padding(0)
         )
+        hostView.wantsLayer = true
+        hostView.layer?.backgroundColor = .clear
 
         let panel = PalettePanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),

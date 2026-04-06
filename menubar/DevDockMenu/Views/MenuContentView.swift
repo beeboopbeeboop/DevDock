@@ -95,9 +95,9 @@ struct MenuContentView: View {
             .padding(.horizontal, 4)
 
             Button(action: {
-                let configPath = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent(".devdock/config.json")
-                NSWorkspace.shared.open(configPath)
+                let path = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".devdock/config.json").path
+                Process.launchedProcess(launchPath: "/usr/bin/open", arguments: ["-t", path])
             }) {
                 HStack {
                     Text("Settings")
