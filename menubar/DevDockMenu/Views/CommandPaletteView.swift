@@ -26,6 +26,9 @@ class PaletteState {
     // Recents
     var recents: [RecentEntry] = []
 
+    // Active projects (context engine)
+    var activeProjects: [(projectId: String, projectName: String, score: Double)] = []
+
     static let knownVerbs = ["reset", "start", "stop", "status", "logs", "pull", "push", "commit", "deploy"]
 
     var isVerbMode: Bool {
@@ -77,6 +80,21 @@ class PaletteState {
 
         if q.isEmpty {
             var sections: [Section] = []
+
+            // Active projects (context engine — what you've been working on)
+            if !activeProjects.isEmpty {
+                let items = activeProjects.prefix(3).compactMap { active -> PaletteItem? in
+                    guard let project = projects.first(where: { $0.id == active.projectId }) else { return nil }
+                    return PaletteItem(
+                        id: "active-\(project.id)",
+                        label: project.name,
+                        description: "Active today",
+                        icon: "flame",
+                        kind: .project(project)
+                    )
+                }
+                if !items.isEmpty { sections.append(Section(title: "ACTIVE", items: items)) }
+            }
 
             // Recents
             if !recents.isEmpty {
@@ -236,8 +254,10 @@ class PaletteState {
         Task {
             async let p = DevDockAPIClient.shared.fetchProjects()
             async let r = DevDockAPIClient.shared.fetchRunningProcesses()
+            async let a = DevDockAPIClient.shared.fetchActiveProjects()
             projects = await p
             runningProcesses = await r
+            activeProjects = await a
             dataReady = true
         }
     }

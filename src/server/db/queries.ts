@@ -469,3 +469,154 @@ export function getCommandLogs(filters?: {
     createdAt: r.created_at,
   }));
 }
+
+// ──────────────────────────────────────
+// Project Activity (Context Engine + Timeline)
+// ──────────────────────────────────────
+
+const SIGNAL_WEIGHTS: Record<string, number> = {
+  git_commit: 5,
+  server_start: 3,
+  server_stop: 2,
+  palette_use: 2,
+  verb_exec: 3,
+  file_change: 1,
+};
+
+export function recordActivity(projectId: string, signal: string, metadata?: Record<string, any>): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO project_activity (project_id, signal, timestamp, metadata)
+    VALUES (?, ?, ?, ?)
+  `).run(projectId, signal, Date.now(), metadata ? JSON.stringify(metadata) : null);
+
+  // Prune old entries (keep last 30 days)
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  db.prepare(`DELETE FROM project_activity WHERE timestamp < ?`).run(cutoff);
+}
+
+export function getActiveProjects(range: 'today' | 'week' | 'month' = 'today'): { projectId: string; projectName: string; score: number; lastSignal: string; lastActivity: number }[] {
+  const db = getDb();
+  const now = Date.now();
+  const cutoffs = {
+    today: now - 24 * 60 * 60 * 1000,
+    week: now - 7 * 24 * 60 * 60 * 1000,
+    month: now - 30 * 24 * 60 * 60 * 1000,
+  };
+  const cutoff = cutoffs[range];
+
+  const rows = db.prepare(`
+    SELECT pa.project_id, pa.signal, pa.timestamp,
+           COALESCE(o.custom_name, p.name) as project_name
+    FROM project_activity pa
+    LEFT JOIN projects p ON pa.project_id = p.id
+    LEFT JOIN user_overrides o ON pa.project_id = o.project_id
+    WHERE pa.timestamp > ?
+    ORDER BY pa.timestamp DESC
+  `).all(cutoff) as { project_id: string; signal: string; timestamp: number; project_name: string | null }[];
+
+  // Score each project with recency decay
+  const scores = new Map<string, { score: number; name: string; lastSignal: string; lastTime: number }>();
+
+  for (const row of rows) {
+    const age = (now - row.timestamp) / (24 * 60 * 60 * 1000); // days
+    const decay = age < 1 ? 1.0 : age < 2 ? 0.7 : age < 7 ? 0.4 : 0.1;
+    const weight = SIGNAL_WEIGHTS[row.signal] || 1;
+
+    const existing = scores.get(row.project_id);
+    if (existing) {
+      existing.score += weight * decay;
+    } else {
+      scores.set(row.project_id, {
+        score: weight * decay,
+        name: row.project_name || row.project_id,
+        lastSignal: row.signal,
+        lastTime: row.timestamp,
+      });
+    }
+  }
+
+  return Array.from(scores.entries())
+    .map(([id, data]) => ({
+      projectId: id,
+      projectName: data.name,
+      score: Math.round(data.score * 10) / 10,
+      lastSignal: data.lastSignal,
+      lastActivity: data.lastTime,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+}
+
+export function getTimeline(range: 'today' | 'week' = 'today', projectId?: string): { timestamp: number; type: string; projectId: string; projectName: string; summary: string }[] {
+  const db = getDb();
+  const now = Date.now();
+  const cutoff = range === 'today' ? now - 24 * 60 * 60 * 1000 : now - 7 * 24 * 60 * 60 * 1000;
+
+  // Merge command_logs + project_activity
+  const params: any[] = [cutoff];
+  let projectFilter = '';
+  if (projectId) {
+    projectFilter = ' AND project_id = ?';
+    params.push(projectId);
+  }
+
+  // Activity events
+  const activities = db.prepare(`
+    SELECT pa.project_id, pa.signal as type, pa.timestamp,
+           COALESCE(o.custom_name, p.name, pa.project_id) as project_name,
+           pa.metadata
+    FROM project_activity pa
+    LEFT JOIN projects p ON pa.project_id = p.id
+    LEFT JOIN user_overrides o ON pa.project_id = o.project_id
+    WHERE pa.timestamp > ?${projectFilter}
+    ORDER BY pa.timestamp DESC
+    LIMIT 200
+  `).all(...params) as any[];
+
+  // Command logs (convert datetime to timestamp)
+  const logs = db.prepare(`
+    SELECT cl.project_id, 'verb' as type,
+           CAST(strftime('%s', cl.created_at) AS INTEGER) * 1000 as timestamp,
+           COALESCE(o.custom_name, p.name, cl.project_id) as project_name,
+           cl.verb || ' ' || COALESCE(cl.project_id, '') || ' → ' || cl.status as summary
+    FROM command_logs cl
+    LEFT JOIN projects p ON cl.project_id = p.id
+    LEFT JOIN user_overrides o ON cl.project_id = o.project_id
+    WHERE CAST(strftime('%s', cl.created_at) AS INTEGER) * 1000 > ?${projectFilter ? projectFilter.replace('project_id', 'cl.project_id') : ''}
+    ORDER BY cl.created_at DESC
+    LIMIT 200
+  `).all(...params) as any[];
+
+  const merged = [
+    ...activities.map((a: any) => ({
+      timestamp: a.timestamp,
+      type: a.type,
+      projectId: a.project_id,
+      projectName: a.project_name,
+      summary: formatActivitySummary(a.type, a.metadata),
+    })),
+    ...logs.map((l: any) => ({
+      timestamp: l.timestamp,
+      type: l.type,
+      projectId: l.project_id || '',
+      projectName: l.project_name || '',
+      summary: l.summary,
+    })),
+  ];
+
+  return merged.sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
+}
+
+function formatActivitySummary(signal: string, metadataStr: string | null): string {
+  const meta = metadataStr ? JSON.parse(metadataStr) : {};
+  switch (signal) {
+    case 'file_change': return `${meta.files_changed || '?'} files changed`;
+    case 'git_commit': return meta.message || 'Git commit';
+    case 'server_start': return 'Dev server started';
+    case 'server_stop': return 'Dev server stopped';
+    case 'verb_exec': return `Ran ${meta.verb || 'command'}`;
+    case 'palette_use': return 'Opened in palette';
+    default: return signal;
+  }
+}

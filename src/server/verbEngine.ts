@@ -1,7 +1,7 @@
 import type { Project, ProjectType } from '../shared/types.js';
 import { startProcess, stopProcess, getStatus, getBuffer } from './processManager.js';
 import { validateDevCommand, validateProjectPath, validatePort, validatePids } from './security.js';
-import { logCommand, getProjectAliases, getProjects } from './db/queries.js';
+import { logCommand, getProjectAliases, getProjects, recordActivity } from './db/queries.js';
 
 // ──────────────────────────────────────
 // Types
@@ -358,6 +358,9 @@ export async function executeVerb(
     message: steps.map(s => s.message).join('; '),
     durationMs: duration,
   });
+
+  // Record activity for context engine
+  try { recordActivity(project.id, 'verb_exec', { verb, ok: allOk }); } catch { /* non-critical */ }
 
   return {
     ok: allOk,

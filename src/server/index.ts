@@ -18,10 +18,12 @@ import { insightsApi } from './api/insights.js';
 import { presetsApi } from './api/presets.js';
 import { profilesApi } from './api/profiles.js';
 import { verbApi } from './api/verbApi.js';
+import { timelineApi } from './api/timeline.js';
 import { runScan } from './scanner/discover.js';
 import { setupAutoScan } from './api/scan.js';
 import { cleanup } from './processManager.js';
 import { getUserConfig, getConfigPath } from './userConfig.js';
+import { startFileWatcher } from './contextEngine.js';
 
 const app = new Hono();
 
@@ -68,6 +70,7 @@ app.route('/api/insights', insightsApi);
 app.route('/api/presets', presetsApi);
 app.route('/api/profiles', profilesApi);
 app.route('/api/verbs', verbApi);
+app.route('/api/timeline', timelineApi);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', name: 'DevDock', version: '0.1.0' });
@@ -84,6 +87,9 @@ runScan().then((count) => {
   console.log(`  Scanned ${count} projects`);
   setupAutoScan();
 });
+
+// Start file watcher for context engine
+startFileWatcher();
 
 const uc = getUserConfig();
 console.log(`

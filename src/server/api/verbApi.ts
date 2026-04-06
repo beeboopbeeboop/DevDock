@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getProjects, getProjectAliases, getAllAliases, setProjectAlias, removeProjectAlias, getCommandLogs } from '../db/queries.js';
 import { resolveProjectFuzzy, detectProjectFromCwd, executeVerb, isKnownVerb, suggestVerb, stopAll, statusAll } from '../verbEngine.js';
+import { checkTrigger, executeWorkflow, isWorkflowVerb, getWorkflowByVerb, listWorkflows } from '../workflowEngine.js';
 
 export const verbApi = new Hono();
 
@@ -10,6 +11,16 @@ verbApi.post('/do', async (c) => {
   const { verb, target, args, source, cwd, message } = await c.req.json();
 
   if (!verb) return c.json({ error: 'verb is required' }, 400);
+
+  // Check for custom workflow verbs (e.g., "morning")
+  if (!isKnownVerb(verb) && isWorkflowVerb(verb)) {
+    const wf = getWorkflowByVerb(verb);
+    if (wf) {
+      const result = await executeWorkflow(wf);
+      return c.json({ ok: result.steps.every(s => s.ok), workflow: result });
+    }
+  }
+
   if (!isKnownVerb(verb)) {
     const suggestion = suggestVerb(verb);
     if (suggestion) {
@@ -46,7 +57,21 @@ verbApi.post('/do', async (c) => {
   }
 
   const result = await executeVerb(verb, project, { args, source: source || 'cli', message });
+
+  // Check for workflow triggers
+  const triggered = checkTrigger(verb, project.id);
+  if (triggered) {
+    const wfResult = await executeWorkflow(triggered);
+    return c.json({ ...result, workflow: wfResult });
+  }
+
   return c.json(result);
+});
+
+// ─── Workflows ───
+
+verbApi.get('/workflows', (c) => {
+  return c.json(listWorkflows());
 });
 
 // ─── Aliases ───

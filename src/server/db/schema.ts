@@ -112,6 +112,19 @@ export function getDb(): Database {
     );
   `);
 
+  // Project activity tracking (context engine + timeline)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      signal TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      metadata TEXT
+    );
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_activity_project ON project_activity(project_id, timestamp)`); } catch { /* exists */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_activity_time ON project_activity(timestamp)`); } catch { /* exists */ }
+
   // Command audit log
   db.exec(`
     CREATE TABLE IF NOT EXISTS command_logs (

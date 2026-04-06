@@ -1,5 +1,6 @@
 import type { Subprocess } from 'bun';
 import { validateDevCommand } from './security.js';
+import { recordActivity } from './db/queries.js';
 
 interface ManagedProcess {
   proc: Subprocess;
@@ -87,6 +88,7 @@ export function startProcess(
   };
 
   processes.set(projectId, managed);
+  try { recordActivity(projectId, 'server_start'); } catch { /* non-critical */ }
 
   // Pipe stdout
   if (proc.stdout) {
@@ -305,6 +307,7 @@ export function stopProcess(projectId: string): boolean {
   }
   managed.listeners.clear();
   processes.delete(projectId);
+  try { recordActivity(projectId, 'server_stop'); } catch { /* non-critical */ }
   return true;
 }
 

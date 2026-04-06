@@ -151,6 +151,22 @@ actor DevDockAPIClient {
         _ = try? await session.data(for: request)
     }
 
+    func fetchActiveProjects() async -> [(projectId: String, projectName: String, score: Double)] {
+        guard let url = URL(string: "\(baseURL)/timeline/active?range=today") else { return [] }
+        do {
+            let (data, _) = try await session.data(from: url)
+            if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                return arr.compactMap { item in
+                    guard let id = item["projectId"] as? String,
+                          let name = item["projectName"] as? String,
+                          let score = item["score"] as? Double else { return nil }
+                    return (id, name, score)
+                }
+            }
+        } catch {}
+        return []
+    }
+
     func execCommand(command: String) async -> (ok: Bool, output: String) {
         guard let url = URL(string: "\(baseURL)/actions/exec") else { return (false, "Invalid URL") }
         var request = URLRequest(url: url)
