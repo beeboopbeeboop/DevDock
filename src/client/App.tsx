@@ -102,6 +102,18 @@ export function App() {
   // Reset focus on view/filter changes
   useEffect(() => { setFocusedIndex(-1); }, [appView, filters, showDirtyOnly]);
 
+  // Listen for Tauri global hotkey event to open command palette
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('open-command-palette', () => {
+        setCmdPaletteOpen(true);
+      }).then((fn) => { unlisten = fn; });
+    });
+    return () => { unlisten?.(); };
+  }, []);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

@@ -12,8 +12,10 @@ class PaletteState {
     var isLoading = false
     var verbResult: String?
     var verbOk: Bool = true
+    var arrowNavCounter = 0
+    var isVisible = false
+    var dataReady = false
 
-    // Known verbs for detection
     static let knownVerbs = ["reset", "start", "stop", "status", "logs", "pull", "push", "commit", "deploy"]
 
     var isVerbMode: Bool {
@@ -21,102 +23,99 @@ class PaletteState {
         return Self.knownVerbs.contains(first.lowercased())
     }
 
-    var filteredItems: [PaletteItem] {
+    // Grouped items for section headers
+    struct Section {
+        let title: String
+        let items: [PaletteItem]
+    }
+
+    var sections: [Section] {
+        if !dataReady { return [] }
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
 
         if q.isEmpty {
-            // Show running processes first, then favorites, then recent
-            var items: [PaletteItem] = []
+            var sections: [Section] = []
 
             // Running processes
-            for proc in runningProcesses {
-                if let project = projects.first(where: { $0.id == proc.projectId }) {
-                    items.append(PaletteItem(
-                        id: "running-\(proc.projectId)",
-                        label: project.name,
-                        description: "Running on :\(project.devPort ?? 0)",
-                        icon: "bolt.fill",
-                        kind: .project(project)
-                    ))
-                }
+            let running = runningProcesses.compactMap { proc -> PaletteItem? in
+                guard let project = projects.first(where: { $0.id == proc.projectId }) else { return nil }
+                return PaletteItem(
+                    id: "running-\(proc.projectId)",
+                    label: project.name,
+                    description: "Running on :\(project.devPort ?? 0)",
+                    icon: "bolt.fill",
+                    kind: .project(project)
+                )
             }
+            if !running.isEmpty { sections.append(Section(title: "RUNNING", items: running)) }
 
-            // Verbs as quick actions
-            for verb in Self.knownVerbs {
-                items.append(PaletteItem(
+            // Verbs
+            let verbs = Self.knownVerbs.map { verb in
+                PaletteItem(
                     id: "verb-\(verb)",
                     label: verb,
                     description: "Type '\(verb) <project>' to execute",
                     icon: iconForVerb(verb),
                     kind: .verb(verb, "")
-                ))
+                )
             }
+            sections.append(Section(title: "VERBS", items: verbs))
 
-            // Favorite projects
-            for project in projects where project.isFavorite {
-                if !items.contains(where: { $0.id == "running-\(project.id)" }) {
-                    items.append(PaletteItem(
-                        id: "fav-\(project.id)",
-                        label: project.name,
-                        description: "\(project.type) \(project.status)",
-                        icon: "star.fill",
-                        kind: .project(project)
-                    ))
-                }
+            // Favorites
+            let favs = projects.filter(\.isFavorite).compactMap { project -> PaletteItem? in
+                guard !running.contains(where: { $0.id == "running-\(project.id)" }) else { return nil }
+                return PaletteItem(
+                    id: "fav-\(project.id)",
+                    label: project.name,
+                    description: "\(project.type) \(project.status)",
+                    icon: "star.fill",
+                    kind: .project(project)
+                )
             }
+            if !favs.isEmpty { sections.append(Section(title: "FAVORITES", items: favs)) }
 
             // All projects
-            for project in projects {
-                let existingIds = items.map(\.id)
-                if !existingIds.contains("running-\(project.id)") && !existingIds.contains("fav-\(project.id)") {
-                    items.append(PaletteItem(
-                        id: "proj-\(project.id)",
-                        label: project.name,
-                        description: "\(project.type) \(project.status)",
-                        icon: iconForProjectType(project.type),
-                        kind: .project(project)
-                    ))
-                }
+            let runningIds = Set(running.map { $0.id.replacingOccurrences(of: "running-", with: "") })
+            let favIds = Set(favs.map { $0.id.replacingOccurrences(of: "fav-", with: "") })
+            let rest = projects.compactMap { project -> PaletteItem? in
+                guard !runningIds.contains(project.id) && !favIds.contains(project.id) else { return nil }
+                return PaletteItem(
+                    id: "proj-\(project.id)",
+                    label: project.name,
+                    description: "\(project.type) \(project.status)",
+                    icon: iconForProjectType(project.type),
+                    kind: .project(project)
+                )
             }
+            if !rest.isEmpty { sections.append(Section(title: "PROJECTS", items: rest)) }
 
-            return items
+            return sections
         }
 
-        // Verb mode: don't filter, just show the verb target hint
+        // Verb mode
         if isVerbMode {
             let parts = q.split(separator: " ", maxSplits: 1)
             let verb = String(parts.first ?? "")
             let target = parts.count > 1 ? String(parts[1]) : ""
 
-            if target.isEmpty {
-                // Show projects as potential targets
-                return projects.map { project in
-                    PaletteItem(
-                        id: "target-\(project.id)",
-                        label: "\(verb) \(project.name)",
-                        description: project.type,
-                        icon: iconForVerb(verb),
-                        kind: .verb(verb, project.id)
-                    )
-                }
-            } else {
-                // Fuzzy match projects for the target
-                return projects
-                    .filter { fuzzyMatch($0.name, target) || $0.aliases.contains(where: { fuzzyMatch($0, target) }) }
-                    .map { project in
-                        PaletteItem(
-                            id: "target-\(project.id)",
-                            label: "\(verb) \(project.name)",
-                            description: project.type,
-                            icon: iconForVerb(verb),
-                            kind: .verb(verb, project.id)
-                        )
-                    }
+            let matchedProjects = target.isEmpty
+                ? projects
+                : projects.filter { fuzzyMatch($0.name, target) || $0.aliases.contains(where: { fuzzyMatch($0, target) }) }
+
+            let items = matchedProjects.map { project in
+                PaletteItem(
+                    id: "target-\(project.id)",
+                    label: "\(verb) \(project.name)",
+                    description: project.type,
+                    icon: iconForVerb(verb),
+                    kind: .verb(verb, project.id)
+                )
             }
+            return [Section(title: "TARGETS", items: items)]
         }
 
-        // Search mode: fuzzy match projects
-        return projects
+        // Search mode
+        let items = projects
             .filter { fuzzyMatch($0.name, q) || $0.aliases.contains(where: { fuzzyMatch($0, q) }) || fuzzyMatch($0.type, q) }
             .map { project in
                 PaletteItem(
@@ -127,6 +126,15 @@ class PaletteState {
                     kind: .project(project)
                 )
             }
+        return [Section(title: "RESULTS", items: items)]
+    }
+
+    var filteredItems: [PaletteItem] {
+        sections.flatMap(\.items)
+    }
+
+    var resultCount: Int {
+        filteredItems.count
     }
 
     func reset() {
@@ -134,6 +142,8 @@ class PaletteState {
         selectedIndex = 0
         verbResult = nil
         isLoading = false
+        isVisible = true
+        dataReady = false
         loadData()
     }
 
@@ -143,13 +153,13 @@ class PaletteState {
             async let r = DevDockAPIClient.shared.fetchRunningProcesses()
             projects = await p
             runningProcesses = await r
+            dataReady = true
         }
     }
 
     func executeSelected(item: PaletteItem) {
         switch item.kind {
         case .project(let project):
-            // Open in VSCode
             Task {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -179,10 +189,22 @@ class PaletteState {
         }
     }
 
+    func tabAutocomplete() {
+        guard isVerbMode else { return }
+        let parts = query.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
+        let verb = String(parts.first ?? "")
+        let items = filteredItems
+        if let first = items.first, case .verb(_, let projectId) = first.kind, !projectId.isEmpty {
+            let name = projects.first(where: { $0.id == projectId })?.name ?? projectId
+            query = "\(verb) \(name)"
+        }
+    }
+
     func moveUp() {
         let count = filteredItems.count
         if count > 0 {
             selectedIndex = (selectedIndex - 1 + count) % count
+            arrowNavCounter += 1
         }
     }
 
@@ -190,6 +212,7 @@ class PaletteState {
         let count = filteredItems.count
         if count > 0 {
             selectedIndex = (selectedIndex + 1) % count
+            arrowNavCounter += 1
         }
     }
 }
@@ -200,7 +223,6 @@ private func fuzzyMatch(_ text: String, _ query: String) -> Bool {
     let t = text.lowercased()
     let q = query.lowercased()
     if t.contains(q) { return true }
-    // Ordered character match
     var tIndex = t.startIndex
     for char in q {
         guard let found = t[tIndex...].firstIndex(of: char) else { return false }
@@ -237,42 +259,41 @@ private func iconForProjectType(_ type: String) -> String {
     }
 }
 
-// Color mapping matching PROJECT_TYPE_COLORS from the web dashboard
 private func colorForProjectType(_ type: String) -> Color {
     switch type {
-    case "cep-plugin": return Color(red: 0.65, green: 0.55, blue: 0.98)    // #a78bfa
-    case "nextjs": return Color(red: 0.97, green: 0.97, blue: 0.97)        // #f8f8f8
-    case "vite-react": return Color(red: 0.51, green: 0.55, blue: 0.98)    // #818cf8
-    case "framer-plugin": return Color(red: 0.38, green: 0.65, blue: 0.98) // #60a5fa
-    case "cloudflare-worker": return Color(red: 0.98, green: 0.75, blue: 0.14) // #fbbf24
-    case "hono-server": return Color(red: 0.98, green: 0.45, blue: 0.09)   // #f97316
-    case "static-site": return Color(red: 0.53, green: 0.94, blue: 0.67)   // #86efac
-    case "node-package": return Color(red: 0.97, green: 0.44, blue: 0.44)  // #f87171
-    case "swift-app": return Color(red: 1.0, green: 0.42, blue: 0.42)      // #ff6b6b
-    default: return Color(red: 0.42, green: 0.45, blue: 0.50)              // #6b7280
+    case "cep-plugin": return Color(red: 0.65, green: 0.55, blue: 0.98)
+    case "nextjs": return Color(red: 0.97, green: 0.97, blue: 0.97)
+    case "vite-react": return Color(red: 0.51, green: 0.55, blue: 0.98)
+    case "framer-plugin": return Color(red: 0.38, green: 0.65, blue: 0.98)
+    case "cloudflare-worker": return Color(red: 0.98, green: 0.75, blue: 0.14)
+    case "hono-server": return Color(red: 0.98, green: 0.45, blue: 0.09)
+    case "static-site": return Color(red: 0.53, green: 0.94, blue: 0.67)
+    case "node-package": return Color(red: 0.97, green: 0.44, blue: 0.44)
+    case "swift-app": return Color(red: 1.0, green: 0.42, blue: 0.42)
+    default: return Color(red: 0.42, green: 0.45, blue: 0.50)
     }
 }
 
 private func colorForVerb(_ verb: String) -> Color {
     switch verb {
-    case "reset": return Color(red: 0.98, green: 0.75, blue: 0.14)  // amber
-    case "start": return Color(red: 0.34, green: 0.80, blue: 0.47)  // green
-    case "stop": return Color(red: 0.97, green: 0.44, blue: 0.44)   // red
-    case "deploy": return Color(red: 0.51, green: 0.55, blue: 0.98) // indigo
-    case "commit": return Color(red: 0.65, green: 0.55, blue: 0.98) // purple
-    case "push": return Color(red: 0.38, green: 0.65, blue: 0.98)   // blue
-    case "pull": return Color(red: 0.38, green: 0.65, blue: 0.98)   // blue
-    default: return Color(red: 0.42, green: 0.45, blue: 0.50)       // gray
+    case "reset": return Color(red: 0.98, green: 0.75, blue: 0.14)
+    case "start": return Color(red: 0.34, green: 0.80, blue: 0.47)
+    case "stop": return Color(red: 0.97, green: 0.44, blue: 0.44)
+    case "deploy": return Color(red: 0.51, green: 0.55, blue: 0.98)
+    case "commit": return Color(red: 0.65, green: 0.55, blue: 0.98)
+    case "push": return Color(red: 0.38, green: 0.65, blue: 0.98)
+    case "pull": return Color(red: 0.38, green: 0.65, blue: 0.98)
+    default: return Color(red: 0.42, green: 0.45, blue: 0.50)
     }
 }
 
 private func colorForStatus(_ status: String) -> Color {
     switch status {
-    case "active": return Color(red: 0.53, green: 0.94, blue: 0.67)   // green
-    case "maintenance": return Color(red: 0.98, green: 0.75, blue: 0.14) // amber
-    case "paused": return Color(red: 0.42, green: 0.45, blue: 0.50)   // gray
-    case "archived": return Color(red: 0.29, green: 0.34, blue: 0.39) // dark gray
-    case "idea": return Color(red: 0.51, green: 0.55, blue: 0.98)     // indigo
+    case "active": return Color(red: 0.53, green: 0.94, blue: 0.67)
+    case "maintenance": return Color(red: 0.98, green: 0.75, blue: 0.14)
+    case "paused": return Color(red: 0.42, green: 0.45, blue: 0.50)
+    case "archived": return Color(red: 0.29, green: 0.34, blue: 0.39)
+    case "idea": return Color(red: 0.51, green: 0.55, blue: 0.98)
     default: return Color(red: 0.42, green: 0.45, blue: 0.50)
     }
 }
@@ -293,9 +314,10 @@ struct CommandPaletteView: View {
                     .foregroundStyle(.secondary)
                     .font(.system(size: 16))
 
-                TextField("Search projects, run verbs...", text: $state.query)
+                TextField("Type a verb or project name...", text: $state.query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(.primary)
                     .focused($isSearchFocused)
                     .onSubmit {
                         let items = state.filteredItems
@@ -310,6 +332,16 @@ struct CommandPaletteView: View {
                 if state.isLoading {
                     ProgressView()
                         .scaleEffect(0.6)
+                }
+
+                // Clear button
+                if !state.query.isEmpty {
+                    Button(action: { state.query = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 if state.isVerbMode {
@@ -336,61 +368,80 @@ struct CommandPaletteView: View {
                         .font(.system(size: 12))
                         .lineLimit(2)
                     Spacer()
-                    Button("Dismiss") {
-                        state.verbResult = nil
+                    Button(action: { state.verbResult = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(state.verbOk ? Color.green.opacity(0.08) : Color.red.opacity(0.08))
+                .transition(.move(edge: .top).combined(with: .opacity))
 
                 Divider()
             }
 
-            // Results list
+            // Results list with section headers
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 4) {
-                        let items = state.filteredItems
-                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                            PaletteRow(
-                                item: item,
-                                isSelected: index == state.selectedIndex
-                            )
-                            .id(item.id)
-                            .onTapGesture {
-                                state.selectedIndex = index
-                                state.executeSelected(item: item)
+                    LazyVStack(spacing: 0) {
+                        let allSections = state.sections
+                        ForEach(Array(allSections.enumerated()), id: \.element.title) { _, section in
+                            // Section header
+                            HStack {
+                                Text(section.title)
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.tertiary)
+                                    .tracking(0.5)
+                                Spacer()
                             }
-                            .onHover { hovering in
-                                if hovering { state.selectedIndex = index }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
+
+                            ForEach(Array(section.items.enumerated()), id: \.element.id) { _, item in
+                                let globalIndex = state.filteredItems.firstIndex(where: { $0.id == item.id }) ?? 0
+                                PaletteRow(
+                                    item: item,
+                                    isSelected: globalIndex == state.selectedIndex
+                                )
+                                .id(item.id)
+                                .onTapGesture {
+                                    state.selectedIndex = globalIndex
+                                    state.executeSelected(item: item)
+                                }
                             }
                         }
 
-                        if items.isEmpty && !state.query.isEmpty {
-                            Text("No matches")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 40)
+                        if state.filteredItems.isEmpty && !state.query.isEmpty {
+                            VStack(spacing: 6) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(.quaternary)
+                                Text("No matches")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.bottom, 4)
                 }
-                .onChange(of: state.selectedIndex) { _, newVal in
+                .onChange(of: state.arrowNavCounter) { _, _ in
                     let items = state.filteredItems
-                    if newVal < items.count {
-                        proxy.scrollTo(items[newVal].id, anchor: .center)
+                    if state.selectedIndex < items.count {
+                        // anchor: nil = only scroll if item is off-screen, minimal movement
+                        proxy.scrollTo(items[state.selectedIndex].id, anchor: nil)
                     }
                 }
             }
 
-            // Footer with hints
+            // Footer
             Divider()
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 HStack(spacing: 4) {
                     KeyHint("↑↓")
                     Text("navigate")
@@ -399,12 +450,24 @@ struct CommandPaletteView: View {
                     KeyHint("↩")
                     Text("select")
                 }
+                if state.isVerbMode {
+                    HStack(spacing: 4) {
+                        KeyHint("tab")
+                        Text("complete")
+                    }
+                }
                 HStack(spacing: 4) {
                     KeyHint("esc")
                     Text("close")
                 }
                 Spacer()
-                Text("⇧Space D")
+
+                // Result count
+                Text("\(state.resultCount) item\(state.resultCount == 1 ? "" : "s")")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.quaternary)
+
+                Text("⌃⇧D")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
@@ -420,8 +483,15 @@ struct CommandPaletteView: View {
                 .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+        // Bounce-in animation
+        .scaleEffect(state.isVisible ? 1.0 : 0.97)
+        .animation(.spring(response: 0.2, dampingFraction: 0.75), value: state.isVisible)
         .onAppear {
             isSearchFocused = true
+            // Trigger bounce
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                state.isVisible = true
+            }
         }
         .onKeyPress(.upArrow) {
             state.moveUp()
@@ -435,8 +505,14 @@ struct CommandPaletteView: View {
             onDismiss()
             return .handled
         }
+        .onKeyPress(.tab) {
+            state.tabAutocomplete()
+            return .handled
+        }
     }
 }
+
+// MARK: - Palette Row
 
 struct PaletteRow: View {
     let item: PaletteItem
@@ -455,7 +531,7 @@ struct PaletteRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Color-coded icon with tinted background
+            // Color-coded icon
             Image(systemName: item.icon)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isSelected ? .white : itemColor)
@@ -467,14 +543,14 @@ struct PaletteRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.label)
-                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                    .font(.system(size: 13))
                     .foregroundStyle(isSelected ? .white : .primary)
                     .lineLimit(1)
 
                 if !item.description.isEmpty {
                     HStack(spacing: 4) {
-                        // Type badge
                         if case .project(let proj) = item.kind {
+                            // Type pill
                             Text(proj.type.replacingOccurrences(of: "-", with: " "))
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(isSelected ? .white.opacity(0.9) : itemColor)
@@ -485,7 +561,6 @@ struct PaletteRow: View {
                                         .fill(isSelected ? itemColor.opacity(0.3) : itemColor.opacity(0.1))
                                 )
 
-                            // Status badge
                             Text(proj.status)
                                 .font(.system(size: 9))
                                 .foregroundStyle(isSelected ? .white.opacity(0.7) : colorForStatus(proj.status))
@@ -495,6 +570,11 @@ struct PaletteRow: View {
                                     .fill(Color.orange)
                                     .frame(width: 4, height: 4)
                             }
+                        } else if case .verb(_, _) = item.kind {
+                            // Verb description with colored pill
+                            Text(item.description)
+                                .font(.system(size: 10))
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.7) : Color.gray)
                         } else {
                             Text(item.description)
                                 .font(.system(size: 10))
@@ -533,15 +613,15 @@ struct PaletteRow: View {
         )
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.1), value: isSelected)
     }
 }
 
+// MARK: - Key Hint
+
 struct KeyHint: View {
     let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
+    init(_ text: String) { self.text = text }
 
     var body: some View {
         Text(text)

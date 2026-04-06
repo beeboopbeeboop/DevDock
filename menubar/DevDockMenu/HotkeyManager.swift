@@ -19,9 +19,8 @@ private func log(_ msg: String) {
     }
 }
 
-/// Global hotkey chord: Shift+Space → D
-/// Uses CGEventTap — the lowest-level keyboard intercept on macOS.
-/// Requires Accessibility permission (Input Monitoring on newer macOS).
+/// Global hotkey: Ctrl+Shift+D opens command palette.
+/// Uses CGEventTap — requires Accessibility permission.
 final class HotkeyManager {
     static let shared = HotkeyManager()
 
@@ -29,15 +28,11 @@ final class HotkeyManager {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
-    // Chord state
-    private var waitingForD = false
-    private var chordTimer: Timer?
-
     private init() {}
 
     func register(handler: @escaping () -> Void) {
         self.onTrigger = handler
-        log("register() called — setting up CGEventTap for Shift+Space → D")
+        log("register() called — setting up CGEventTap for Ctrl+Shift+D")
 
         // Request Accessibility
         let trusted = AXIsProcessTrustedWithOptions(
@@ -99,46 +94,16 @@ final class HotkeyManager {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Step 1: Detect Shift+Space (keyCode 49 = Space, shift flag set, no cmd/ctrl/opt)
-        if keyCode == 49
+        // Ctrl+Shift+D (keyCode 2 = D)
+        if keyCode == 2
+            && flags.contains(.maskControl)
             && flags.contains(.maskShift)
-            && !flags.contains(.maskCommand)
-            && !flags.contains(.maskControl)
-            && !flags.contains(.maskAlternate)
-            && !waitingForD
         {
-            log("Shift+Space detected — waiting for D...")
-            waitingForD = true
-
-            // Cancel previous timer if any
-            chordTimer?.invalidate()
-            chordTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-                log("Chord timed out")
-                self?.waitingForD = false
+            log("Ctrl+Shift+D — opening palette")
+            DispatchQueue.main.async { [weak self] in
+                self?.onTrigger?()
             }
-
-            // Swallow the Shift+Space so it doesn't type a space
-            return nil
-        }
-
-        // Step 2: If waiting for D
-        if waitingForD {
-            waitingForD = false
-            chordTimer?.invalidate()
-            chordTimer = nil
-
-            if keyCode == 2 { // D key
-                log("D pressed — CHORD COMPLETE! Triggering palette")
-                DispatchQueue.main.async { [weak self] in
-                    self?.onTrigger?()
-                }
-                // Swallow the D keypress
-                return nil
-            } else {
-                log("Wrong key (\(keyCode)), chord cancelled")
-                // Let the keypress through
-                return Unmanaged.passUnretained(event)
-            }
+            return nil // swallow
         }
 
         return Unmanaged.passUnretained(event)
@@ -153,8 +118,6 @@ final class HotkeyManager {
         }
         eventTap = nil
         runLoopSource = nil
-        chordTimer?.invalidate()
-        waitingForD = false
     }
 
     deinit { unregister() }

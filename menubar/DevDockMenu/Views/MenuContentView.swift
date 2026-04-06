@@ -26,13 +26,13 @@ struct MenuContentView: View {
                 Text("DevDock server is not running")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else if state.processes.isEmpty {
                 Text("No dev servers running")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
                 // Running servers
@@ -73,7 +73,7 @@ struct MenuContentView: View {
                     Text("Command Palette")
                         .font(.system(size: 12))
                     Spacer()
-                    Text("⇧Space D")
+                    Text("⌃⇧D")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
@@ -167,11 +167,17 @@ struct ProfileRowView: View {
 }
 
 struct MenuRowButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(configuration.isPressed ? Color.accentColor.opacity(0.15) : Color.clear)
+            .background(
+                configuration.isPressed ? Color.accentColor.opacity(0.2) :
+                isHovered ? Color.white.opacity(0.06) : Color.clear
+            )
             .cornerRadius(4)
+            .onHover { hovering in isHovered = hovering }
     }
 }

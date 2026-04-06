@@ -29,6 +29,10 @@ const app = new Hono();
 app.use('*', cors({
   origin: (origin) => {
     if (!origin) return ''; // same-origin requests (no Origin header)
+    // Tauri webview origins
+    if (origin === 'tauri://localhost' || origin === 'https://tauri.localhost') {
+      return origin;
+    }
     try {
       const url = new URL(origin);
       if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {

@@ -3,3 +3,14 @@ devdock.db
 devdock.db-shm
 devdock.db-wal
 .vite/
+
+# Tauri
+src-tauri/target/
+
+# Swift build artifacts
+menubar/.build/
+menubar/DevDock.app/
+menubar/DevDock\ MenuBar.app/
+
+# Hotkey debug log
+.devdock/hotkey.log

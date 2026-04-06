@@ -1,0 +1,20 @@
+#!/bin/bash
+# DevDock sidecar — launches the Bun/Hono server
+# Tauri manages lifecycle (start/stop/restart)
+
+export PATH="$HOME/.bun/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# In dev mode, the binary is in src-tauri/binaries/
+# In production, resolve relative to the app bundle
+if [ -f "$SCRIPT_DIR/../../src/server/index.ts" ]; then
+    PROJECT_DIR="$SCRIPT_DIR/../.."
+elif [ -f "$SCRIPT_DIR/../../../src/server/index.ts" ]; then
+    PROJECT_DIR="$SCRIPT_DIR/../../.."
+else
+    # Fallback to known location
+    PROJECT_DIR="/Users/jon/Documents/DevDock"
+fi
+
+cd "$PROJECT_DIR"
+exec "$HOME/.bun/bin/bun" run src/server/index.ts

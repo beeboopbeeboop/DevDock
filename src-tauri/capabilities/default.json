@@ -1,0 +1,22 @@
+{
+  "identifier": "default",
+  "description": "Default permissions for DevDock",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-execute",
+    "shell:allow-open",
+    "shell:allow-spawn",
+    "shell:allow-stdin-write",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "devdock-server",
+          "sidecar": true
+        }
+      ]
+    }
+  ]
+}

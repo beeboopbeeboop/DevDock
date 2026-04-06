@@ -8,7 +8,6 @@ class PalettePanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     override func cancelOperation(_ sender: Any?) {
-        // Escape key
         orderOut(nil)
     }
 }
@@ -55,8 +54,17 @@ final class CommandPaletteWindowController {
         }
 
         paletteState?.reset()
+
+        // Fade + bounce in
+        panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.15
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        })
 
         // Monitor for clicks outside the panel
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
@@ -65,11 +73,22 @@ final class CommandPaletteWindowController {
     }
 
     func dismiss() {
-        panel?.orderOut(nil)
+        guard let panel = panel, panel.isVisible else { return }
+
         if let monitor = clickMonitor {
             NSEvent.removeMonitor(monitor)
             clickMonitor = nil
         }
+
+        // Fade out
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.1
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.orderOut(nil)
+            panel.alphaValue = 1 // reset for next show
+        })
     }
 
     private func createPanel() {

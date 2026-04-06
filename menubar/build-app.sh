@@ -3,10 +3,11 @@ set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="DevDock MenuBar"
+APP_NAME="DevDock"
 BUNDLE_ID="com.devdock.menubar"
 BINARY_NAME="DevDockMenuBar"
 APP_DIR="${APP_NAME}.app"
+INSTALL_DIR="/Applications/${APP_DIR}"
 
 # Build release binary
 swift build -c release 2>&1
@@ -26,9 +27,9 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>DevDock MenuBar</string>
+    <string>DevDock</string>
     <key>CFBundleDisplayName</key>
-    <string>DevDock MenuBar</string>
+    <string>DevDock</string>
     <key>CFBundleIdentifier</key>
     <string>com.devdock.menubar</string>
     <key>CFBundleVersion</key>
@@ -49,5 +50,20 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-echo "Built: $(pwd)/$APP_DIR"
-echo "To install: cp -r \"$APP_DIR\" /Applications/"
+# Codesign with stable ad-hoc identity
+codesign --force --deep --sign - "$APP_DIR" 2>/dev/null
+
+# Install to /Applications (preserves TCC/Accessibility by keeping same bundle ID + signature approach)
+if [ "$1" = "--install" ]; then
+    # Kill running instance first
+    pkill -f "DevDockMenuBar" 2>/dev/null || true
+    sleep 0.5
+    rm -rf "$INSTALL_DIR"
+    cp -r "$APP_DIR" "$INSTALL_DIR"
+    echo "Installed to $INSTALL_DIR"
+    echo "NOTE: You may need to re-grant Accessibility permission after install."
+    open "$INSTALL_DIR"
+else
+    echo "Built: $(pwd)/$APP_DIR"
+    echo "Run with --install to copy to /Applications and launch"
+fi
