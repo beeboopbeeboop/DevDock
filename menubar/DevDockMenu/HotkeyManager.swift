@@ -19,11 +19,12 @@ private func log(_ msg: String) {
     }
 }
 
-/// Global hotkey: Ctrl+Shift+D opens command palette.
+/// Global hotkey — reads config from ~/.devdock/config.json
 /// Uses CGEventTap — requires Accessibility permission.
 final class HotkeyManager {
     static let shared = HotkeyManager()
 
+    private(set) var config: HotkeyConfig = .defaultConfig
     private var onTrigger: (() -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -32,15 +33,14 @@ final class HotkeyManager {
 
     func register(handler: @escaping () -> Void) {
         self.onTrigger = handler
-        log("register() called — setting up CGEventTap for Ctrl+Shift+D")
+        self.config = HotkeyConfig.load()
+        log("register() — hotkey: \(config.displayLabel) (keyCode=\(config.keyCode))")
 
-        // Request Accessibility
         let trusted = AXIsProcessTrustedWithOptions(
             [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
         )
         log("Accessibility trusted: \(trusted)")
 
-        // Create event tap at the CGSession level — intercepts ALL keyboard events
         let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
 
         guard let tap = CGEvent.tapCreate(
@@ -55,17 +55,13 @@ final class HotkeyManager {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            log("ERROR: CGEvent.tapCreate failed — Accessibility permission likely not granted")
-            log("Go to System Settings > Privacy & Security > Accessibility")
-            log("Remove and re-add 'DevDock MenuBar', then relaunch the app")
+            log("ERROR: CGEvent.tapCreate failed — Accessibility permission not granted")
             return
         }
 
         self.eventTap = tap
         log("CGEventTap created successfully")
 
-        // Run on a dedicated background thread with its own run loop
-        // This ensures the tap fires regardless of what the main thread is doing
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         self.runLoopSource = source
 
@@ -82,11 +78,9 @@ final class HotkeyManager {
     }
 
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // If tap gets disabled by the system, re-enable it
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
-                log("Event tap re-enabled after system disable")
             }
             return Unmanaged.passUnretained(event)
         }
@@ -94,16 +88,23 @@ final class HotkeyManager {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Ctrl+Shift+D (keyCode 2 = D)
-        if keyCode == 2
-            && flags.contains(.maskControl)
-            && flags.contains(.maskShift)
+        let ctrlMatch = !config.modifiers.ctrl || flags.contains(.maskControl)
+        let shiftMatch = !config.modifiers.shift || flags.contains(.maskShift)
+        let cmdMatch = !config.modifiers.cmd || flags.contains(.maskCommand)
+        let altMatch = !config.modifiers.alt || flags.contains(.maskAlternate)
+
+        // Also check that we're not triggering on extra modifiers
+        let noExtraCtrl = config.modifiers.ctrl || !flags.contains(.maskControl)
+        let noExtraCmd = config.modifiers.cmd || !flags.contains(.maskCommand)
+
+        if keyCode == config.keyCode
+            && ctrlMatch && shiftMatch && cmdMatch && altMatch
+            && noExtraCtrl && noExtraCmd
         {
-            log("Ctrl+Shift+D — opening palette")
             DispatchQueue.main.async { [weak self] in
                 self?.onTrigger?()
             }
-            return nil // swallow
+            return nil
         }
 
         return Unmanaged.passUnretained(event)

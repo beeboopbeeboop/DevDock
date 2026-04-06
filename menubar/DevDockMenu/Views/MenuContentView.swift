@@ -73,7 +73,7 @@ struct MenuContentView: View {
                     Text("Command Palette")
                         .font(.system(size: 12))
                     Spacer()
-                    Text("⌃⇧D")
+                    Text(HotkeyManager.shared.config.displayLabel)
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }

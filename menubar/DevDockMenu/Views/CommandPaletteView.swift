@@ -467,7 +467,7 @@ struct CommandPaletteView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
 
-                Text("⌃⇧D")
+                Text(HotkeyManager.shared.config.displayLabel)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
