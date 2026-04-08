@@ -24,12 +24,22 @@ final class DevDockServer {
     func start() {
         guard !isRunning else { return }
 
+        // Touch the DB once so migrations run on startup, not on first request.
+        _ = Database.shared
+
         registerRoutes()
 
         do {
             try server.start(port, forceIPv4: true, priority: .default)
             isRunning = true
             NSLog("[DevDockServer] listening on http://localhost:\(port)")
+
+            // Kick off initial scan in the background so the dashboard
+            // populates shortly after launch.
+            DispatchQueue.global(qos: .utility).async {
+                let count = Scanner.runScan()
+                NSLog("[DevDockServer] initial scan: \(count) projects")
+            }
         } catch {
             NSLog("[DevDockServer] failed to bind port \(port): \(error.localizedDescription)")
         }
@@ -43,9 +53,9 @@ final class DevDockServer {
     }
 
     // MARK: - Route mounting
-    //
-    // Phase 0: only /api/health. Subsequent phases will mount the rest.
     private func registerRoutes() {
         HealthRoutes.mount(on: server)
+        ProjectRoutes.mount(on: server)
+        ScanRoutes.mount(on: server)
     }
 }
