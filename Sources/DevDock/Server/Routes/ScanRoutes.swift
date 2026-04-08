@@ -11,6 +11,7 @@ enum ScanRoutes {
         server["/api/scan"] = { request in
             guard request.method == "POST" else { return .raw(405, "Method Not Allowed", nil, nil) }
             let count = Scanner.runScan()
+            try? Queries.captureSnapshot()
             return jsonResponse(["ok": true, "scanned": count])
         }
     }

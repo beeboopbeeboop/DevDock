@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Floating panel subclass that can become key window (for keyboard input)
-/// and dismisses on Escape.
+/// without activating the owning app, and dismisses on Escape.
 class PalettePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -21,6 +21,7 @@ final class CommandPaletteWindowController {
     private var panel: PalettePanel?
     private var paletteState: PaletteState?
     private var clickMonitor: Any?
+    private var resignKeyObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -73,8 +74,11 @@ final class CommandPaletteWindowController {
             height: finalFrame.height
         )
         panel.setFrame(startFrame, display: false)
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // orderFrontRegardless + makeKey lets a nonactivating panel receive
+        // keyboard input without bringing the owning app forward. We deliberately
+        // do NOT call NSApp.activate() — that would focus the dashboard too.
+        panel.orderFrontRegardless()
+        panel.makeKey()
 
         // Animate in: fade + scale up + slide down
         NSAnimationContext.runAnimationGroup({ ctx in
@@ -84,9 +88,23 @@ final class CommandPaletteWindowController {
             panel.animator().setFrame(finalFrame, display: true)
         })
 
-        // Monitor for clicks outside the panel
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        // Monitor for clicks outside the panel (other apps, empty desktop).
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.dismiss()
+        }
+
+        // Dismiss when the palette loses key status — covers clicks on the
+        // dashboard window (same-app, local events the global monitor misses).
+        if resignKeyObserver == nil {
+            resignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: panel,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.dismiss()
+                }
+            }
         }
     }
 
@@ -96,6 +114,10 @@ final class CommandPaletteWindowController {
         if let monitor = clickMonitor {
             NSEvent.removeMonitor(monitor)
             clickMonitor = nil
+        }
+        if let observer = resignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            resignKeyObserver = nil
         }
 
         // Fade out
@@ -119,22 +141,28 @@ final class CommandPaletteWindowController {
             })
             .padding(0)
         )
+        // Clip the host view's backing layer to the same rounded shape the
+        // SwiftUI RoundedRectangle draws (radius 12). Without this, the
+        // window's rectangular backing store shows through at the corners.
         hostView.wantsLayer = true
         hostView.layer?.backgroundColor = .clear
+        hostView.layer?.cornerRadius = 12
+        hostView.layer?.masksToBounds = true
 
         let panel = PalettePanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
-            styleMask: [.fullSizeContentView, .borderless],
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         panel.isFloatingPanel = true
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.isMovableByWindowBackground = false
+        panel.hidesOnDeactivate = false
         panel.contentView = hostView
 
         // Dismiss when a regular app activates (not overlay/accessory apps like Paste)

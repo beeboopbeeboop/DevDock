@@ -1,9 +1,19 @@
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var isHeadless: Bool {
+        ProcessInfo.processInfo.environment["DEVDOCK_HEADLESS"] == "1"
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+
         // Boot the in-process HTTP server (replaces old Bun backend).
         DevDockServer.shared.start()
+
+        if isHeadless {
+            return
+        }
 
         CommandPaletteWindowController.shared.preload()
 
@@ -11,6 +21,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 CommandPaletteWindowController.shared.toggle()
             }
+        }
+
+        Task { @MainActor in
+            WindowManager.shared.showDashboard()
         }
 
         // Register URL scheme handler
@@ -62,8 +76,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct DevDockApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var appState = AppState()
+    @State private var appState = AppState.shared
 
+    @SceneBuilder
     var body: some Scene {
         MenuBarExtra {
             MenuContentView(state: appState)

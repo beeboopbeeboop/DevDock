@@ -1,5 +1,5 @@
 import AppKit
-import CoreGraphics
+import Carbon
 
 private let logFile = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent(".devdock/hotkey.log")
@@ -19,107 +19,124 @@ private func log(_ msg: String) {
     }
 }
 
-/// Global hotkey — reads config from ~/.devdock/config.json
-/// Uses CGEventTap — requires Accessibility permission.
+/// Global hotkey — reads config from ~/.devdock/config.json.
+/// Uses Carbon RegisterEventHotKey so it works without Accessibility permission.
 final class HotkeyManager {
     static let shared = HotkeyManager()
 
     private(set) var config: HotkeyConfig = .defaultConfig
     private var onTrigger: (() -> Void)?
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
 
     private init() {}
 
     func register(handler: @escaping () -> Void) {
+        unregister()
+
         self.onTrigger = handler
         self.config = HotkeyConfig.load()
         log("register() — hotkey: \(config.displayLabel) (keyCode=\(config.keyCode))")
 
-        let trusted = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        var eventSpec = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
         )
-        log("Accessibility trusted: \(trusted)")
 
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
-                guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                return manager.handleEvent(proxy: proxy, type: type, event: event)
+        let installStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else { return noErr }
+                let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                return manager.handleHotKeyEvent(event)
             },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            log("ERROR: CGEvent.tapCreate failed — Accessibility permission not granted")
+            1,
+            &eventSpec,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &eventHandlerRef
+        )
+
+        guard installStatus == noErr else {
+            log("ERROR: InstallEventHandler failed (\(installStatus))")
             return
         }
 
-        self.eventTap = tap
-        log("CGEventTap created successfully")
+        var hotKeyID = EventHotKeyID(
+            signature: FourCharCode("DDHK".fourCharCodeValue),
+            id: UInt32(config.keyCode)
+        )
+        let registerStatus = RegisterEventHotKey(
+            UInt32(config.keyCode),
+            carbonModifiers(for: config.modifiers),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
 
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        self.runLoopSource = source
-
-        let thread = Thread {
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-            CGEvent.tapEnable(tap: tap, enable: true)
-            log("Event tap enabled on background run loop")
-            CFRunLoopRun()
+        guard registerStatus == noErr else {
+            if let eventHandlerRef {
+                RemoveEventHandler(eventHandlerRef)
+                self.eventHandlerRef = nil
+            }
+            log("ERROR: RegisterEventHotKey failed (\(registerStatus))")
+            return
         }
-        thread.name = "com.devdock.hotkey"
-        thread.qualityOfService = .userInteractive
-        thread.start()
-        log("Hotkey thread started")
+
+        log("Carbon hotkey registered successfully")
     }
 
-    private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
-            return Unmanaged.passUnretained(event)
+    private func handleHotKeyEvent(_ event: EventRef) -> OSStatus {
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
+        )
+
+        guard status == noErr else {
+            log("ERROR: GetEventParameter failed (\(status))")
+            return status
         }
 
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-
-        let ctrlMatch = !config.modifiers.ctrl || flags.contains(.maskControl)
-        let shiftMatch = !config.modifiers.shift || flags.contains(.maskShift)
-        let cmdMatch = !config.modifiers.cmd || flags.contains(.maskCommand)
-        let altMatch = !config.modifiers.alt || flags.contains(.maskAlternate)
-
-        // Also check that we're not triggering on extra modifiers
-        let noExtraCtrl = config.modifiers.ctrl || !flags.contains(.maskControl)
-        let noExtraCmd = config.modifiers.cmd || !flags.contains(.maskCommand)
-
-        if keyCode == config.keyCode
-            && ctrlMatch && shiftMatch && cmdMatch && altMatch
-            && noExtraCtrl && noExtraCmd
-        {
+        if hotKeyID.signature == FourCharCode("DDHK".fourCharCodeValue) {
             DispatchQueue.main.async { [weak self] in
                 self?.onTrigger?()
             }
-            return nil
         }
 
-        return Unmanaged.passUnretained(event)
+        return noErr
     }
 
     func unregister() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
         }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+            self.eventHandlerRef = nil
         }
-        eventTap = nil
-        runLoopSource = nil
+    }
+
+    private func carbonModifiers(for modifiers: HotkeyConfig.Modifiers) -> UInt32 {
+        var result: UInt32 = 0
+        if modifiers.ctrl { result |= UInt32(controlKey) }
+        if modifiers.shift { result |= UInt32(shiftKey) }
+        if modifiers.cmd { result |= UInt32(cmdKey) }
+        if modifiers.alt { result |= UInt32(optionKey) }
+        return result
     }
 
     deinit { unregister() }
+}
+
+private extension String {
+    var fourCharCodeValue: UInt32 {
+        utf8.prefix(4).reduce(0) { ($0 << 8) + UInt32($1) }
+    }
 }

@@ -5,6 +5,8 @@ import UserNotifications
 @MainActor
 @Observable
 class AppState {
+    static let shared = AppState()
+
     var isOnline = false
     var processes: [RunningProcess] = []
     var profiles: [StartupProfile] = []
@@ -15,6 +17,7 @@ class AppState {
     private let normalInterval: TimeInterval = 3
 
     func startPolling() {
+        guard pollTimer == nil else { return }
         requestNotificationPermission()
         schedulePoll()
     }

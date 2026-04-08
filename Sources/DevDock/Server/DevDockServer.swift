@@ -38,6 +38,7 @@ final class DevDockServer {
             // populates shortly after launch.
             DispatchQueue.global(qos: .utility).async {
                 let count = Scanner.runScan()
+                try? Queries.captureSnapshot()
                 NSLog("[DevDockServer] initial scan: \(count) projects")
             }
         } catch {
@@ -47,6 +48,7 @@ final class DevDockServer {
 
     func stop() {
         guard isRunning else { return }
+        ProcessManager.shared.cleanup()
         server.stop()
         isRunning = false
         NSLog("[DevDockServer] stopped")
@@ -57,5 +59,16 @@ final class DevDockServer {
         HealthRoutes.mount(on: server)
         ProjectRoutes.mount(on: server)
         ScanRoutes.mount(on: server)
+        ActionRoutes.mount(on: server)
+        PortRoutes.mount(on: server)
+        GitHubRoutes.mount(on: server)
+        DockerRoutes.mount(on: server)
+        EnvRoutes.mount(on: server)
+        InsightsRoutes.mount(on: server)
+        GraphRoutes.mount(on: server)
+        DeployRoutes.mount(on: server)
+        ProfileRoutes.mount(on: server)
+        VerbRoutes.mount(on: server)
+        TimelineRoutes.mount(on: server)
     }
 }

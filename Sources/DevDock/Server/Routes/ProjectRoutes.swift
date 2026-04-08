@@ -47,6 +47,16 @@ enum ProjectRoutes {
             } else if body["customDevCommand"] is NSNull {
                 input.customDevCommand = .some(nil)
             }
+            if let v = body["customDevPort"] as? Int {
+                input.customDevPort = v
+            } else if let v = body["devPort"] as? Int {
+                input.customDevPort = v
+            } else if body["customDevPort"] is NSNull || body["devPort"] is NSNull {
+                input.clearCustomDevPort = true
+            }
+            if let v = body["customDeployUrl"] as? String {
+                input.customDeployUrl = v
+            }
             if let v = body["notes"] as? String { input.notes = v }
 
             do {

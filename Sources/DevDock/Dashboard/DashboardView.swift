@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Root dashboard view — sidebar + content + detail panel.
 struct DashboardView: View {
-    @State private var appState = AppState()
+    @State private var appState = AppState.shared
     @State private var projectsState = ProjectsState()
     @State private var toastState = ToastState()
     @State private var appView = Preferences.lastAppView
