@@ -2,6 +2,9 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Boot the in-process HTTP server (replaces old Bun backend).
+        DevDockServer.shared.start()
+
         CommandPaletteWindowController.shared.preload()
 
         HotkeyManager.shared.register {
@@ -17,6 +20,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        DevDockServer.shared.stop()
     }
 
     @objc func handleURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {

@@ -1,7 +1,6 @@
 # Swift build artifacts
 .build/
 .swiftpm/
-Package.resolved
 DerivedData/
 *.xcodeproj
 *.xcworkspace
