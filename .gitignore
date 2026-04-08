@@ -1,0 +1,22 @@
+# Swift build artifacts
+.build/
+.swiftpm/
+Package.resolved
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Editor
+.vscode/*
+!.vscode/launch.json
+.idea/
+
+# Local app state (user-specific, not code)
+~/.devdock/

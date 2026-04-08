@@ -1,0 +1,63 @@
+import Foundation
+import AppKit
+
+// MARK: - Palette Item Types
+
+enum PaletteItemKind {
+    case project(DevDockProject)
+    case verb(String, String) // verb name, description
+    case action(String, String, () -> Void) // label, description, action
+    case projectAction(DevDockProject, ProjectAction) // drill-in action
+}
+
+enum Confidence {
+    case high    // score 50+, execute immediately
+    case medium  // score 25-49, show "confirm?" on destructive actions
+    case low     // score 10-24, dimmed, "did you mean?"
+
+    var opacity: Double {
+        switch self {
+        case .high: return 1.0
+        case .medium: return 0.85
+        case .low: return 0.55
+        }
+    }
+}
+
+struct PaletteItem: Identifiable {
+    let id: String
+    let label: String
+    let description: String
+    let icon: String // SF Symbol name
+    let kind: PaletteItemKind
+    var confidence: Confidence = .high
+}
+
+// MARK: - Project Actions (drill-in)
+
+struct ProjectAction {
+    let id: String
+    let label: String
+    let icon: String
+    let color: (Double, Double, Double) // RGB
+
+    static func actionsFor(_ project: DevDockProject) -> [ProjectAction] {
+        var actions: [ProjectAction] = [
+            ProjectAction(id: "vscode", label: "Open in VS Code", icon: "chevron.left.forwardslash.chevron.right", color: (0.38, 0.65, 0.98)),
+            ProjectAction(id: "cursor", label: "Open in Cursor", icon: "cursorarrow.rays", color: (0.51, 0.55, 0.98)),
+            ProjectAction(id: "terminal", label: "Open Terminal", icon: "terminal", color: (0.42, 0.45, 0.50)),
+            ProjectAction(id: "finder", label: "Show in Finder", icon: "folder", color: (0.42, 0.45, 0.50)),
+        ]
+
+        if project.devPort != nil {
+            actions.append(ProjectAction(id: "localhost", label: "Open Localhost :\(project.devPort!)", icon: "globe", color: (0.34, 0.80, 0.47)))
+            actions.append(ProjectAction(id: "start-dev", label: "Start Dev Server", icon: "play.fill", color: (0.34, 0.80, 0.47)))
+            actions.append(ProjectAction(id: "stop-dev", label: "Stop Dev Server", icon: "stop.fill", color: (0.97, 0.44, 0.44)))
+        }
+
+        actions.append(ProjectAction(id: "git-pull", label: "Git Pull", icon: "arrow.down.circle", color: (0.38, 0.65, 0.98)))
+        actions.append(ProjectAction(id: "copy-path", label: "Copy Path", icon: "doc.on.doc", color: (0.42, 0.45, 0.50)))
+
+        return actions
+    }
+}
