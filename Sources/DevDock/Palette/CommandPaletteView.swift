@@ -318,6 +318,19 @@ class PaletteState {
         let recentLabel = "\(action.label) \u{2014} \(project.name)"
         RecentsStore.save(RecentEntry(id: "\(action.id)-\(project.id)", label: recentLabel, projectId: project.id, timestamp: Date().timeIntervalSince1970))
 
+        // Immediate optimistic feedback — shown before the async task resolves
+        // so the user always sees *something* happen on click. Replaced with
+        // the real result once the API call completes.
+        lastExecutedCommand = action.label
+        verbOk = true
+        switch action.id {
+        case "start-dev": verbResult = "Starting \(project.name)…"
+        case "stop-dev":  verbResult = "Stopping \(project.name)…"
+        case "git-pull":  verbResult = "Pulling \(project.name)…"
+        case "copy-path": verbResult = "Copying path…"
+        default:          verbResult = "\(action.label)…"
+        }
+
         Task {
             switch action.id {
             case "vscode":
@@ -333,13 +346,13 @@ class PaletteState {
                     NSWorkspace.shared.open(url)
                 }
             case "start-dev":
-                _ = await APIClient.shared.startDev(projectId: project.id)
-                verbOk = true
-                verbResult = "Started \(project.name)"
+                let ok = await APIClient.shared.startDev(projectId: project.id)
+                verbOk = ok
+                verbResult = ok ? "Started \(project.name)" : "Failed to start \(project.name)"
             case "stop-dev":
-                _ = await APIClient.shared.stopDev(projectId: project.id)
-                verbOk = true
-                verbResult = "Stopped \(project.name)"
+                let ok = await APIClient.shared.stopDev(projectId: project.id)
+                verbOk = ok
+                verbResult = ok ? "Stopped \(project.name)" : "Failed to stop \(project.name)"
             case "git-pull":
                 await APIClient.shared.gitPull(path: project.path)
                 verbOk = true
@@ -517,9 +530,13 @@ struct CommandPaletteView: View {
                 }
 
                 Button(action: {
-                    let path = FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent(".devdock/config.json").path
-                    Process.launchedProcess(launchPath: "/usr/bin/open", arguments: ["-t", path])
+                    // Dismiss the palette, open the dashboard window, and
+                    // ask it to present the Settings sheet.
+                    CommandPaletteWindowController.shared.dismiss()
+                    WindowManager.shared.showDashboard()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        NotificationCenter.default.post(name: .devdockOpenSettings, object: nil)
+                    }
                 }) {
                     Image(systemName: "gearshape")
                         .font(.system(size: 13))

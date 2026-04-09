@@ -251,7 +251,16 @@ struct DashboardOverlays: ViewModifier {
             .sheet(isPresented: $settingsOpen) {
                 SettingsView(isPresented: $settingsOpen)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .devdockOpenSettings)) { _ in
+                settingsOpen = true
+            }
     }
+}
+
+extension Notification.Name {
+    /// Posted to ask the dashboard to open its Settings sheet (e.g. from the
+    /// command palette gear button).
+    static let devdockOpenSettings = Notification.Name("DevDockOpenSettings")
 }
 
 /// Keyboard shortcuts via NSEvent local monitor (works with modifier keys)
