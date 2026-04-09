@@ -49,9 +49,13 @@ final class CommandPaletteWindowController {
         if panel == nil {
             createPanel()
         }
-        guard let panel = panel else { return }
+        guard let panel = panel, let hostLayer = panel.contentView?.layer else { return }
 
-        // Center on the active screen
+        // Center on the active screen at final size — the window frame stays
+        // constant for the entire animation so SwiftUI lays out once at the
+        // correct width. Glitchy reflow of earlier versions came from
+        // animating the NSWindow frame and forcing SwiftUI to re-lay out on
+        // every frame.
         if let screen = NSScreen.main ?? NSScreen.screens.first {
             let screenFrame = screen.visibleFrame
             let panelSize = NSSize(width: 640, height: 420)
@@ -64,29 +68,39 @@ final class CommandPaletteWindowController {
 
         paletteState?.reset()
 
-        // Start state: invisible, scaled down, shifted up
-        panel.alphaValue = 0
-        let finalFrame = panel.frame
-        let startFrame = NSRect(
-            x: finalFrame.origin.x + 16,
-            y: finalFrame.origin.y - 8,
-            width: finalFrame.width - 32,
-            height: finalFrame.height
+        // Anchor the scale around the panel's center so it grows from the
+        // middle instead of the top-left corner.
+        hostLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        hostLayer.position = CGPoint(x: hostLayer.bounds.midX, y: hostLayer.bounds.midY)
+
+        // Start state: slightly scaled down, nudged up, invisible.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        hostLayer.opacity = 0
+        hostLayer.transform = CATransform3DConcat(
+            CATransform3DMakeScale(0.94, 0.94, 1),
+            CATransform3DMakeTranslation(0, 10, 0)
         )
-        panel.setFrame(startFrame, display: false)
+        CATransaction.commit()
+
+        panel.alphaValue = 1
         // App is .accessory, so activating is invisible (no Dock icon to
         // switch to). This gives SwiftUI tap gestures a proper key-window
         // context — critical for row click handlers in the palette.
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        // Animate in: fade + scale up + slide down
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.2
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
-            panel.animator().alphaValue = 1
-            panel.animator().setFrame(finalFrame, display: true)
-        })
+        // Animate in: fade + scale up + slide down — all on the content
+        // layer, so the window frame (and therefore SwiftUI's layout pass)
+        // never changes. Custom cubic-bezier for a crisp exponential feel.
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.22)
+        CATransaction.setAnimationTimingFunction(
+            CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
+        )
+        hostLayer.opacity = 1
+        hostLayer.transform = CATransform3DIdentity
+        CATransaction.commit()
 
         // Global clicks (other apps, empty desktop) dismiss the palette.
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
@@ -105,7 +119,7 @@ final class CommandPaletteWindowController {
     }
 
     func dismiss() {
-        guard let panel = panel, panel.isVisible else { return }
+        guard let panel = panel, panel.isVisible, let hostLayer = panel.contentView?.layer else { return }
 
         if let monitor = clickMonitor {
             NSEvent.removeMonitor(monitor)
@@ -116,15 +130,29 @@ final class CommandPaletteWindowController {
             localClickMonitor = nil
         }
 
-        // Fade out
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.1
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
+        // Animate out: scale down slightly, fade. Layer-only — window frame
+        // doesn't move.
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.14)
+        CATransaction.setAnimationTimingFunction(
+            CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.68, 0.06)
+        )
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self = self, let panel = self.panel, let hostLayer = panel.contentView?.layer else { return }
             panel.orderOut(nil)
-            panel.alphaValue = 1 // reset for next show
-        })
+            // Reset layer state so the next show() starts from a known place.
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            hostLayer.opacity = 1
+            hostLayer.transform = CATransform3DIdentity
+            CATransaction.commit()
+        }
+        hostLayer.opacity = 0
+        hostLayer.transform = CATransform3DConcat(
+            CATransform3DMakeScale(0.96, 0.96, 1),
+            CATransform3DMakeTranslation(0, 6, 0)
+        )
+        CATransaction.commit()
     }
 
     private func createPanel() {
