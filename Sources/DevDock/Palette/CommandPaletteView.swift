@@ -15,7 +15,7 @@ class PaletteState {
     var verbOk: Bool = true
     var lastExecutedCommand: String?
     var arrowNavCounter = 0
-    var isVisible = false
+    // isVisible removed — window-level animation now owns show/hide visuals.
     var dataReady = false
 
     // Drill-in state
@@ -245,7 +245,6 @@ class PaletteState {
         selectedIndex = 0
         verbResult = nil
         isLoading = false
-        isVisible = true
         drillProject = nil
         pendingConfirmation = nil
         dataReady = false
@@ -687,11 +686,12 @@ struct CommandPaletteView: View {
                 .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
-        .scaleEffect(state.isVisible ? 1.0 : 0.97)
-        .animation(.spring(response: 0.2, dampingFraction: 0.75), value: state.isVisible)
+        // Show/hide animation is driven by CommandPaletteWindowController at
+        // the NSWindow host-layer level. No SwiftUI scaleEffect here — it was
+        // forcing a layout pass that collided with the window animation and
+        // caused the visible reflow glitch.
         .onAppear {
             isSearchFocused = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { state.isVisible = true }
         }
         .onKeyPress(.upArrow) { state.moveUp(); return .handled }
         .onKeyPress(.downArrow) { state.moveDown(); return .handled }
