@@ -21,7 +21,7 @@ final class CommandPaletteWindowController {
     private var panel: PalettePanel?
     private var paletteState: PaletteState?
     private var clickMonitor: Any?
-    private var resignKeyObserver: NSObjectProtocol?
+    private var localClickMonitor: Any?
 
     private init() {}
 
@@ -74,11 +74,11 @@ final class CommandPaletteWindowController {
             height: finalFrame.height
         )
         panel.setFrame(startFrame, display: false)
-        // orderFrontRegardless + makeKey lets a nonactivating panel receive
-        // keyboard input without bringing the owning app forward. We deliberately
-        // do NOT call NSApp.activate() — that would focus the dashboard too.
-        panel.orderFrontRegardless()
-        panel.makeKey()
+        // App is .accessory, so activating is invisible (no Dock icon to
+        // switch to). This gives SwiftUI tap gestures a proper key-window
+        // context — critical for row click handlers in the palette.
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
 
         // Animate in: fade + scale up + slide down
         NSAnimationContext.runAnimationGroup({ ctx in
@@ -88,23 +88,19 @@ final class CommandPaletteWindowController {
             panel.animator().setFrame(finalFrame, display: true)
         })
 
-        // Monitor for clicks outside the panel (other apps, empty desktop).
+        // Global clicks (other apps, empty desktop) dismiss the palette.
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.dismiss()
         }
-
-        // Dismiss when the palette loses key status — covers clicks on the
-        // dashboard window (same-app, local events the global monitor misses).
-        if resignKeyObserver == nil {
-            resignKeyObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didResignKeyNotification,
-                object: panel,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor in
-                    self?.dismiss()
-                }
+        // Local clicks inside this app that land outside the palette window
+        // also dismiss. Runs *before* SwiftUI sees the event, so we can let
+        // it through (return the event) after scheduling dismissal.
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, let panel = self.panel else { return event }
+            if event.window !== panel {
+                Task { @MainActor in self.dismiss() }
             }
+            return event
         }
     }
 
@@ -115,9 +111,9 @@ final class CommandPaletteWindowController {
             NSEvent.removeMonitor(monitor)
             clickMonitor = nil
         }
-        if let observer = resignKeyObserver {
-            NotificationCenter.default.removeObserver(observer)
-            resignKeyObserver = nil
+        if let monitor = localClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            localClickMonitor = nil
         }
 
         // Fade out
@@ -151,13 +147,13 @@ final class CommandPaletteWindowController {
 
         let panel = PalettePanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
-            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         panel.isFloatingPanel = true
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true

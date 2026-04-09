@@ -6,7 +6,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        // Pure menu bar / background app — no Dock icon, no main menu.
+        // Closing the dashboard window hides it but the app keeps running so
+        // the command palette hotkey stays responsive indefinitely.
+        NSApp.setActivationPolicy(.accessory)
 
         // Boot the in-process HTTP server (replaces old Bun backend).
         DevDockServer.shared.start()
@@ -23,9 +26,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        Task { @MainActor in
-            WindowManager.shared.showDashboard()
-        }
+        // Dashboard is NOT auto-shown on launch — users open it via the menu
+        // bar extra's "Open Dashboard" action. Launching silent keeps DevDock
+        // feeling like a proper background tool.
 
         // Register URL scheme handler
         NSAppleEventManager.shared().setEventHandler(
@@ -38,6 +41,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         DevDockServer.shared.stop()
+    }
+
+    /// Never quit just because the last window closed — the menu bar extra
+    /// and hotkey are the primary UI for a background app.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     @objc func handleURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
