@@ -12,6 +12,16 @@ class PalettePanel: NSPanel {
     }
 }
 
+/// Layer-backed container that wraps NSHostingView. We animate the layer on
+/// this view — not on the NSHostingView itself — because NSHostingView owns
+/// its own SwiftUI layer tree and doesn't reliably propagate transforms to
+/// its sublayers. By wrapping it, we get clean CALayer ownership without
+/// fighting SwiftUI's renderer.
+final class PaletteContainerView: NSView {
+    override var isFlipped: Bool { true }
+    override var wantsUpdateLayer: Bool { true }
+}
+
 /// A floating, borderless panel that appears above all windows.
 /// Dismisses on Escape, click outside, or when a regular app activates.
 @MainActor
@@ -19,6 +29,7 @@ final class CommandPaletteWindowController {
     static let shared = CommandPaletteWindowController()
 
     private var panel: PalettePanel?
+    private var containerView: PaletteContainerView?
     private var paletteState: PaletteState?
     private var clickMonitor: Any?
     private var localClickMonitor: Any?
@@ -49,13 +60,14 @@ final class CommandPaletteWindowController {
         if panel == nil {
             createPanel()
         }
-        guard let panel = panel, let hostLayer = panel.contentView?.layer else { return }
+        guard let panel = panel,
+              let containerView = containerView,
+              let layer = containerView.layer
+        else { return }
 
-        // Center on the active screen at final size — the window frame stays
-        // constant for the entire animation so SwiftUI lays out once at the
-        // correct width. Glitchy reflow of earlier versions came from
-        // animating the NSWindow frame and forcing SwiftUI to re-lay out on
-        // every frame.
+        // Center on the active screen at final size. Window frame stays
+        // constant for the entire animation so SwiftUI lays out once, at
+        // the correct width. All motion happens at the layer level.
         if let screen = NSScreen.main ?? NSScreen.screens.first {
             let screenFrame = screen.visibleFrame
             let panelSize = NSSize(width: 640, height: 420)
@@ -68,47 +80,74 @@ final class CommandPaletteWindowController {
 
         paletteState?.reset()
 
-        // Anchor the scale around the panel's center so it grows from the
-        // middle instead of the top-left corner.
-        hostLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        hostLayer.position = CGPoint(x: hostLayer.bounds.midX, y: hostLayer.bounds.midY)
+        // Ensure the layer's bounds match the container before setting
+        // anchor point (anchor point is normalized, but position uses bounds
+        // coordinates, so we need fresh bounds or the scale will radiate
+        // from the wrong spot after a frame change).
+        containerView.layoutSubtreeIfNeeded()
+        let bounds = layer.bounds
 
-        // Start state: slightly scaled down, nudged up, invisible.
+        // Anchor at center so scale grows from the middle, not the corner.
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+
+        // Snap to start state with animations disabled so the open animation
+        // isn't competing with an implicit reset animation.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        hostLayer.opacity = 0
-        hostLayer.transform = CATransform3DConcat(
-            CATransform3DMakeScale(0.94, 0.94, 1),
-            CATransform3DMakeTranslation(0, 10, 0)
+        layer.opacity = 0
+        layer.transform = CATransform3DConcat(
+            CATransform3DMakeScale(0.88, 0.88, 1),
+            CATransform3DMakeTranslation(0, 14, 0)
         )
         CATransaction.commit()
 
         panel.alphaValue = 1
-        // App is .accessory, so activating is invisible (no Dock icon to
-        // switch to). This gives SwiftUI tap gestures a proper key-window
-        // context — critical for row click handlers in the palette.
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        // Animate in: fade + scale up + slide down — all on the content
-        // layer, so the window frame (and therefore SwiftUI's layout pass)
-        // never changes. Custom cubic-bezier for a crisp exponential feel.
+        // Explicit CABasicAnimations so we fully own the timing — implicit
+        // CATransaction animations on transform can get merged/cancelled
+        // with the anchor-point change above.
+        let duration: CFTimeInterval = 0.28
+        let easeOut = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
+
+        let scaleAnim = CABasicAnimation(keyPath: "transform")
+        scaleAnim.fromValue = NSValue(caTransform3D: CATransform3DConcat(
+            CATransform3DMakeScale(0.88, 0.88, 1),
+            CATransform3DMakeTranslation(0, 14, 0)
+        ))
+        scaleAnim.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        scaleAnim.duration = duration
+        scaleAnim.timingFunction = easeOut
+        scaleAnim.fillMode = .forwards
+        scaleAnim.isRemovedOnCompletion = false
+
+        let opacityAnim = CABasicAnimation(keyPath: "opacity")
+        opacityAnim.fromValue = 0
+        opacityAnim.toValue = 1
+        opacityAnim.duration = duration * 0.7 // fade is quicker than the scale
+        opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        opacityAnim.fillMode = .forwards
+        opacityAnim.isRemovedOnCompletion = false
+
+        // Commit the final model values so post-animation state is correct.
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.22)
-        CATransaction.setAnimationTimingFunction(
-            CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
-        )
-        hostLayer.opacity = 1
-        hostLayer.transform = CATransform3DIdentity
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
         CATransaction.commit()
+
+        layer.add(scaleAnim, forKey: "paletteShowTransform")
+        layer.add(opacityAnim, forKey: "paletteShowOpacity")
 
         // Global clicks (other apps, empty desktop) dismiss the palette.
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.dismiss()
         }
         // Local clicks inside this app that land outside the palette window
-        // also dismiss. Runs *before* SwiftUI sees the event, so we can let
-        // it through (return the event) after scheduling dismissal.
+        // also dismiss. Runs before SwiftUI sees the event; we let it pass
+        // through by returning it.
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self = self, let panel = self.panel else { return event }
             if event.window !== panel {
@@ -119,7 +158,11 @@ final class CommandPaletteWindowController {
     }
 
     func dismiss() {
-        guard let panel = panel, panel.isVisible, let hostLayer = panel.contentView?.layer else { return }
+        guard let panel = panel,
+              panel.isVisible,
+              let containerView = containerView,
+              let layer = containerView.layer
+        else { return }
 
         if let monitor = clickMonitor {
             NSEvent.removeMonitor(monitor)
@@ -130,28 +173,50 @@ final class CommandPaletteWindowController {
             localClickMonitor = nil
         }
 
-        // Animate out: scale down slightly, fade. Layer-only — window frame
-        // doesn't move.
+        // Cancel any in-flight show animations before running the dismissal.
+        layer.removeAnimation(forKey: "paletteShowTransform")
+        layer.removeAnimation(forKey: "paletteShowOpacity")
+
+        let duration: CFTimeInterval = 0.16
+        let easeIn = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 1.0, 1.0)
+
+        let scaleAnim = CABasicAnimation(keyPath: "transform")
+        scaleAnim.fromValue = NSValue(caTransform3D: CATransform3DIdentity)
+        scaleAnim.toValue = NSValue(caTransform3D: CATransform3DConcat(
+            CATransform3DMakeScale(0.94, 0.94, 1),
+            CATransform3DMakeTranslation(0, 6, 0)
+        ))
+        scaleAnim.duration = duration
+        scaleAnim.timingFunction = easeIn
+        scaleAnim.fillMode = .forwards
+        scaleAnim.isRemovedOnCompletion = false
+
+        let opacityAnim = CABasicAnimation(keyPath: "opacity")
+        opacityAnim.fromValue = 1
+        opacityAnim.toValue = 0
+        opacityAnim.duration = duration
+        opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        opacityAnim.fillMode = .forwards
+        opacityAnim.isRemovedOnCompletion = false
+
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.14)
-        CATransaction.setAnimationTimingFunction(
-            CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.68, 0.06)
-        )
         CATransaction.setCompletionBlock { [weak self] in
-            guard let self = self, let panel = self.panel, let hostLayer = panel.contentView?.layer else { return }
+            guard let self = self,
+                  let panel = self.panel,
+                  let containerView = self.containerView,
+                  let layer = containerView.layer
+            else { return }
             panel.orderOut(nil)
-            // Reset layer state so the next show() starts from a known place.
+            // Reset to identity so next show() starts clean.
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            hostLayer.opacity = 1
-            hostLayer.transform = CATransform3DIdentity
+            layer.removeAllAnimations()
+            layer.transform = CATransform3DIdentity
+            layer.opacity = 1
             CATransaction.commit()
         }
-        hostLayer.opacity = 0
-        hostLayer.transform = CATransform3DConcat(
-            CATransform3DMakeScale(0.96, 0.96, 1),
-            CATransform3DMakeTranslation(0, 6, 0)
-        )
+        layer.add(scaleAnim, forKey: "paletteHideTransform")
+        layer.add(opacityAnim, forKey: "paletteHideOpacity")
         CATransaction.commit()
     }
 
@@ -159,19 +224,32 @@ final class CommandPaletteWindowController {
         let state = PaletteState()
         self.paletteState = state
 
+        // Layer-backed container — this is the view whose layer we animate.
+        let container = PaletteContainerView(frame: NSRect(x: 0, y: 0, width: 640, height: 420))
+        container.wantsLayer = true
+        container.layer = CALayer()
+        container.layer?.backgroundColor = .clear
+        container.layer?.cornerRadius = 12
+        container.layer?.masksToBounds = true
+        container.layerContentsRedrawPolicy = .onSetNeedsDisplay
+
+        // SwiftUI host view sits inside the container, filling it.
         let hostView = NSHostingView(
             rootView: CommandPaletteView(state: state, onDismiss: { [weak self] in
                 self?.dismiss()
             })
             .padding(0)
         )
-        // Clip the host view's backing layer to the same rounded shape the
-        // SwiftUI RoundedRectangle draws (radius 12). Without this, the
-        // window's rectangular backing store shows through at the corners.
-        hostView.wantsLayer = true
-        hostView.layer?.backgroundColor = .clear
-        hostView.layer?.cornerRadius = 12
-        hostView.layer?.masksToBounds = true
+        hostView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(hostView)
+        NSLayoutConstraint.activate([
+            hostView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hostView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hostView.topAnchor.constraint(equalTo: container.topAnchor),
+            hostView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        self.containerView = container
 
         let panel = PalettePanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
@@ -187,9 +265,9 @@ final class CommandPaletteWindowController {
         panel.hasShadow = true
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
-        panel.contentView = hostView
+        panel.contentView = container
 
-        // Dismiss when a regular app activates (not overlay/accessory apps like Paste)
+        // Dismiss when a regular app activates (not accessory apps like Paste)
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
